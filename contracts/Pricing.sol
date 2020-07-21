@@ -1,18 +1,84 @@
-pragma solidity >0.5.7 <=0.6.2 ;
+pragma solidity >0.5.7 <=0.6.2;
 
 import "./ABDKMath64x64.sol";
 
+library SafeMath {
+    function add(uint256 a, uint256 b) internal pure returns (uint256) {
+        uint256 c = a + b;
+        require(c >= a, "SafeMath: addition overflow");
+
+        return c;
+    }
+
+    function sub(uint256 a, uint256 b) internal pure returns (uint256) {
+        return sub(a, b, "SafeMath: subtraction overflow");
+    }
+
+    function sub(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        require(b <= a, errorMessage);
+        uint256 c = a - b;
+
+        return c;
+    }
+
+    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+        // Gas optimization: this is cheaper than requiring 'a' not being zero, but the
+        // benefit is lost if 'b' is also tested.
+        // See: https://github.com/OpenZeppelin/openzeppelin-contracts/pull/522
+        if (a == 0) {
+            return 0;
+        }
+
+        uint256 c = a * b;
+        require(c / a == b, "SafeMath: multiplication overflow");
+
+        return c;
+    }
+
+    function div(uint256 a, uint256 b) internal pure returns (uint256) {
+        return div(a, b, "SafeMath: division by zero");
+    }
+
+    function div(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        require(b > 0, errorMessage);
+        uint256 c = a / b;
+        // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+
+        return c;
+    }
+
+    function mod(uint256 a, uint256 b) internal pure returns (uint256) {
+        return mod(a, b, "SafeMath: modulo by zero");
+    }
+
+    function mod(
+        uint256 a,
+        uint256 b,
+        string memory errorMessage
+    ) internal pure returns (uint256) {
+        require(b != 0, errorMessage);
+        return a % b;
+    }
+}
+
 contract Pricing {
     using ABDKMath64x64 for *;
+    using SafeMath for uint256;
 
-    uint public constant YEAR = 31449600;
-    uint public constant MANTISSA = 10 ** 8;
-    uint public constant DENOMINATOR = 10 ** 18;
-    uint public constant PERCENTAGE = 10 ** 3;
-    
+    uint256 public constant YEAR = 31449600;
+    uint256 public constant MANTISSA = 10**8;
+    uint256 public constant DENOMINATOR = 10**18;
+    uint256 public constant PERCENTAGE = 10**3;
 
-    constructor () public {}
-
+    constructor() public {}
 
     /**
      * @dev Calculate the ATM option price. 0.4 * S * sigma * sqrt(T-t).
@@ -20,28 +86,33 @@ contract Pricing {
      * @param o "volatility" scaled by 1000.
      * @param t Time until expiration in seconds.
      */
-    function calculateATM(uint s, uint o, uint t) public pure returns (uint atm) {
+    function calculateATM(
+        uint256 s,
+        uint256 o,
+        uint256 t
+    ) public pure returns (uint256 atm) {
         int128 spot = fromWeiToInt128(s);
         atm = ABDKMath64x64.toUInt(
             int128(2)
-            .div(int128(5))
-            .mul(spot)
-            .mul(ABDKMath64x64.fromUInt(o)).div(ABDKMath64x64.fromUInt(PERCENTAGE))
-            .mul(sqrt(ABDKMath64x64.fromUInt(t).div(ABDKMath64x64.fromUInt(YEAR))))
+                .div(int128(5))
+                .mul(spot)
+                .mul(ABDKMath64x64.fromUInt(o))
+                .div(ABDKMath64x64.fromUInt(PERCENTAGE))
+                .mul(sqrt(ABDKMath64x64.fromUInt(t).div(ABDKMath64x64.fromUInt(YEAR))))
         );
     }
 
-    function fromWeiToInt128(uint x) public pure returns (int128) {
+    function fromWeiToInt128(uint256 x) public pure returns (int128) {
         return x.divu(DENOMINATOR);
     }
 
-    function percentageInt128(uint p) public pure returns (int128) {
+    function percentageInt128(uint256 p) public pure returns (int128) {
         int128 num = ABDKMath64x64.fromUInt(p);
         int128 denom = ABDKMath64x64.fromUInt(PERCENTAGE);
         return num.div(denom);
     }
 
-    function secondsToYears(uint s) public pure returns (int128) {
+    function secondsToYears(uint256 s) public pure returns (int128) {
         int128 time = ABDKMath64x64.fromUInt(s);
         int128 units = ABDKMath64x64.fromUInt(YEAR);
         return time.div(units);
@@ -55,7 +126,12 @@ contract Pricing {
      * @param o "volatility" scaled by 1000.
      * @param t Time until expiration in seconds.
      */
-    function auxiliary(uint s, uint k, uint o, uint t) public pure returns (int128 d1) {
+    function auxiliary(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (int128 d1) {
         int128 moneyness = getMoneyness(s, k);
         // (r + sigma^2 / 2)
         int128 vol = (percentageInt128(o).pow(2)).div(ABDKMath64x64.fromUInt(2));
@@ -65,10 +141,10 @@ contract Pricing {
         int128 num = moneyness.add(vol.mul(time));
         // sigma * sqrt(T - t)
         int128 dom = percentageInt128(o).mul(sqrt(secondsToYears(t)));
-        d1 = num.div(dom);    
+        d1 = num.div(dom);
     }
 
-    function getMoneyness(uint s, uint k) public pure returns (int128 moneyness) {
+    function getMoneyness(uint256 s, uint256 k) public pure returns (int128 moneyness) {
         int128 spot = fromWeiToInt128(s);
         int128 strike = fromWeiToInt128(k);
         // log( s / k)
@@ -87,21 +163,18 @@ contract Pricing {
      * @param o "volatility" scaled by 1000.
      * @param t Time until expiration in seconds.
      */
-    function auxiliary2(uint s, uint k, uint o, uint t) public pure returns (int128 d2) {
+    function auxiliary2(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (int128 d2) {
         int128 d1 = auxiliary(s, k, o, t);
-        d2 = d1.sub(
-                    percentageInt128(o)
-                    .mul(sqrt(secondsToYears(t)))
-                    );
-                
+        d2 = d1.sub(percentageInt128(o).mul(sqrt(secondsToYears(t))));
     }
 
     function ndnumerator(int128 z) public pure returns (int128 numerator) {
-        numerator = ABDKMath64x64.exp(
-                            
-                            (z.neg()).pow(2)
-                            .div(ABDKMath64x64.fromUInt(2))
-                            );
+        numerator = ABDKMath64x64.exp((z.neg()).pow(2).div(ABDKMath64x64.fromUInt(2)));
     }
 
     function cdfA() public pure returns (int128) {
@@ -115,6 +188,7 @@ contract Pricing {
     function cdfC0(int128 z) public pure returns (int128) {
         return z.pow(2);
     }
+
     function cdfC01(int128 z) public pure returns (int128) {
         return cdfC0(z).add(ABDKMath64x64.fromUInt(3));
     }
@@ -178,30 +252,44 @@ contract Pricing {
         n = ABDKMath64x64.fromUInt(1).sub(numerator.div(denominator));
     }
 
-    function square(uint x) public pure returns (uint sq) {
+    function square(uint256 x) public pure returns (uint256 sq) {
         sq = ABDKMath64x64.toUInt(ABDKMath64x64.fromUInt(x).pow(2));
     }
 
-    function bs(uint s, uint k, uint o, uint t) public pure returns (int128 p) {
+    function bs(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (int128 p) {
         int128 spot = fromWeiToInt128(s);
         int128 strike = fromWeiToInt128(k);
         int128 d1 = auxiliary(s, k, o, t);
         int128 d2 = auxiliary2(s, k, o, t);
         int128 nd1 = normdist(d1);
         int128 nd2 = normdist(d2);
-        int128 bs = spot.mul(nd1) > strike.mul(nd2) ? spot.mul(nd1).sub(strike.mul(nd2)) : int128(0);
+        int128 bs = spot.mul(nd1) > strike.mul(nd2)
+            ? spot.mul(nd1).sub(strike.mul(nd2))
+            : int128(0);
         //p = ABDKMath64x64.toUInt(bs.mul(ABDKMath64x64.fromUInt(MANTISSA)));
         p = bs;
     }
 
-    function put(uint s, uint k, uint o, uint t) public pure returns (int128 p) {
+    function put(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (int128 p) {
         int128 spot = fromWeiToInt128(s);
         int128 strike = fromWeiToInt128(k);
         int128 d1 = auxiliary(s, k, o, t);
         int128 d2 = auxiliary2(s, k, o, t);
         int128 nd1 = normdist(neg(d1));
         int128 nd2 = normdist(neg(d2));
-        int128 bs = strike.mul(nd2) > spot.mul(nd1) ? strike.mul(nd2).sub(spot.mul(nd1)) : int128(0);
+        int128 bs = strike.mul(nd2) > spot.mul(nd1)
+            ? strike.mul(nd2).sub(spot.mul(nd1))
+            : int128(0);
         p = bs;
     }
 
@@ -209,33 +297,67 @@ contract Pricing {
         n = ABDKMath64x64.neg(x);
     }
 
-    function _fromInt(int128 x) public pure returns (uint y) {
+    function _fromInt(int128 x) public pure returns (uint256 y) {
         x = x.mul(ABDKMath64x64.fromUInt(MANTISSA));
-        y = x > 0 ? ABDKMath64x64.toUInt(x) : uint(0);
+        y = x > 0 ? ABDKMath64x64.toUInt(x) : uint256(0);
     }
 
     function to128(int128 x) public pure returns (int256 y) {
         y = ABDKMath64x64.to128x128(x);
     }
 
-    function eNumerator(uint s, uint k, uint o, uint t, int128 d1) public pure returns (int128 numerator) {
+    function eNumerator(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t,
+        int128 d1
+    ) public pure returns (int128 numerator) {
         int128 x = fromWeiToInt128(s);
-        int128 delta = ABDKMath64x64.fromUInt(1).sub(
-            normdist(d1)
-        );
+        int128 delta = ABDKMath64x64.fromUInt(1).sub(normdist(d1));
         numerator = x.mul(delta);
     }
 
-    function eDenominator(uint s, uint k, uint o, uint t) public pure returns (int128 denominator) {
+    function eDenominator(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (int128 denominator) {
         int128 x = fromWeiToInt128(s);
         int128 pxt = put(s, k, o, t);
         denominator = x.add(pxt);
     }
 
-    function elasticity(uint s, uint k, uint o, uint t, int128 d1) public pure returns (int128 e) {
+    function elasticity(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t,
+        int128 d1
+    ) public pure returns (int128 e) {
         int128 numerator = eNumerator(s, k, o, t, d1);
         int128 denominator = eDenominator(s, k, o, t);
         e = numerator.div(denominator);
     }
 
+    function getWeights(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (uint256 riskyW, uint256 riskFW) {
+        // get d1
+        int128 d1 = auxiliary(s, k, o, t);
+        // get elasticity using -d1 = weight of risky asset e.g. 0.5
+        int128 elasticity = elasticity(s, k, o, t, d1.neg());
+        // get weight of risk-free asset, 1 - riskyW = 1 - 0.5 = 0.5
+        int128 remainder = ABDKMath64x64.fromUInt(1).sub(elasticity);
+        // convert to uint
+        riskyW = _fromInt(elasticity);
+        riskFW = _fromInt(remainder);
+        // convert to 10 ^ 18 units
+        riskyW = riskyW.mul(uint256(10**18).div(MANTISSA));
+        riskFW = riskFW.mul(uint256(10**18).div(MANTISSA));
+    }
 }
