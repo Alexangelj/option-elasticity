@@ -25,7 +25,7 @@ contract PFactory is Pricing {
     }
 
     function deployPool() public returns (BPool pool) {
-        pool = bFactory.newBPool();
+        pool = bFactory.newBPool(1);
         bPool = pool;
     }
 

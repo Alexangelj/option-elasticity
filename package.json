@@ -7,7 +7,8 @@
         "test": "cross-env buidler test",
         "test:local": "cross-env buidler test --network local",
         "compile": "cross-env buidler compile",
-        "lint": "cross-evn buidler check"
+        "lint": "cross-env buidler check",
+        "bevm": "cross-env buidler node"
     },
     "repository": "https://github.com/Alexangelj/option-elasticity.git",
     "author": "alex.ander.eth",
