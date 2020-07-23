@@ -1,7 +1,4 @@
 const bre = require("@nomiclabs/buidler");
-const { expect } = require("chai");
-const Pricing = require("../artifacts/Pricing.json");
-const PToken = require("../artifacts/PToken.json");
 const { parseEther } = bre.ethers.utils;
 const BFactory = require("../balancer-core/build/contracts/BFactory.json");
 const BPool = require("../balancer-core/build/contracts/BPool.json");
@@ -22,28 +19,35 @@ describe("Pricing Contract", () => {
     const DENOMINATOR = 2 ** 64;
 
     before(async () => {
+        // get wallets
         wallets = await newWallets();
         Admin = wallets[0];
         Alice = Admin._address;
+
+        // get assets
         const _risky = await ethers.getContractFactory("PToken");
         risky = await _risky.deploy("Risky Asset", "RISK", parseEther("10000"));
         const _riskFree = await ethers.getContractFactory("PToken");
         riskFree = await _riskFree.deploy("Risk Free Asset", "FREE", parseEther("10000"));
+
+        // get pricing contract, could be a library tbh
         const _pricing = await ethers.getContractFactory("Pricing");
         pricing = await _pricing.deploy();
+
+        // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
         s = parseEther("101");
         k = parseEther("100");
         o = 100;
         t = 31449600; //one year
 
+        // get balancer factory
         const _factory = await ethers.getContractFactory(BFactory.abi, BFactory.bytecode, Admin);
         factory = await _factory.deploy();
+
+        // get primitive wrapper
         const _pfi = await ethers.getContractFactory("PFactory");
         pfi = await _pfi.deploy();
         await pfi.initialize(factory.address, risky.address, riskFree.address);
-        /* const _pool = await ethers.getContractFactory("BPool");
-        pool = await _pool.deploy();
-        console.log(_pool); */
     });
 
     describe("Test Pricing", () => {
@@ -250,6 +254,10 @@ describe("Pricing Contract", () => {
             let numTokens = await pool.getNumTokens();
             let riskyWeight = await pool.getNormalizedWeight(risky.address);
             let riskFreeWeight = await pool.getNormalizedWeight(riskFree.address);
+            console.log("K", formatEther(k));
+            console.log("x", formatEther(s));
+            console.log("sigma", (o / 1000).toString());
+            console.log("T - t", (t / t).toString());
             console.log("Risky Weight: ", formatEther(weights.riskyW));
             console.log("Risk Free Weight: ", formatEther(weights.riskFW));
             console.log("Risky Amount: ", formatEther(amounts.riskyAmount));
@@ -262,6 +270,21 @@ describe("Pricing Contract", () => {
                 "Risk Free Balance: ",
                 formatEther(await riskFree.balanceOf(pool.address))
             );
+        });
+
+        it("Tests updateWeights function", async () => {
+            await pfi.deployPool();
+            await pfi.approvePool();
+            await risky.approve(pfi.address, parseEther("1000000000"));
+            await riskFree.approve(pfi.address, parseEther("1000000000"));
+            let address = await pfi.bPool();
+            pool = new ethers.Contract(address, BPool.abi, Admin);
+
+            let weights = await pricing.getWeights(s, k, o, t);
+            let amounts = await pfi.getAmounts(weights.riskyW, weights.riskFW);
+            await risky.transfer(pfi.address, amounts.riskyAmount);
+            await riskFree.transfer(pfi.address, amounts.riskFreeAmount);
+            await pfi.connect(Admin).updateWeights(s, k, o, t, { from: Alice });
         });
     });
 });

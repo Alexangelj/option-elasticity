@@ -64,4 +64,20 @@ contract PFactory is Pricing {
             riskFW.mul(25) // bone == 50, 25 == half
         );
     }
+
+    function updateWeights(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public {
+        (uint256 riskyW, uint256 riskFW) = getWeights(s, k, o, t);
+        (uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyW, riskFW);
+        bPool.bind(address(risky), riskyAmount, riskyW.mul(25));
+        bPool.bind(
+            address(riskFree),
+            riskFreeAmount,
+            riskFW.mul(25) // bone == 50, 25 == half
+        );
+    }
 }

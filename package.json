@@ -1,24 +1,32 @@
 {
-  "name": "option-elasticity",
-  "version": "0.1.0",
-  "description": "testing option stuff",
-  "main": "index.js",
-  "repository": "https://github.com/Alexangelj/option-elasticity.git",
-  "author": "alex.ander.eth",
-  "license": "MIT",
-  "private": true,
-  "devDependencies": {
-    "@nomiclabs/buidler": "^1.3.8",
-    "@nomiclabs/buidler-ethers": "^2.0.0",
-    "@nomiclabs/buidler-solhint": "^1.3.3",
-    "@nomiclabs/buidler-waffle": "^2.0.0",
-    "chai": "^4.2.0",
-    "ethereum-waffle": "^3.0.2",
-    "ethers": "^5.0.7",
-    "prettier": "^2.0.5",
-    "prettier-plugin-solidity": "^1.0.0-alpha.54"
-  },
-  "dependencies": {
-    "@openzeppelin/contracts": "^3.1.0"
-  }
+    "name": "option-elasticity",
+    "version": "0.1.0",
+    "description": "testing option stuff",
+    "main": "index.js",
+    "scripts": {
+        "test": "cross-env buidler test",
+        "test:local": "cross-env buidler test --network local"
+    },
+    "repository": "https://github.com/Alexangelj/option-elasticity.git",
+    "author": "alex.ander.eth",
+    "license": "MIT",
+    "private": true,
+    "devDependencies": {
+        "@nomiclabs/buidler": "^1.3.8",
+        "@nomiclabs/buidler-ethers": "^2.0.0",
+        "@nomiclabs/buidler-solhint": "^1.3.3",
+        "@nomiclabs/buidler-waffle": "^2.0.0",
+        "buidler-gas-reporter": "^0.1.3",
+        "chai": "^4.2.0",
+        "ethereum-waffle": "^3.0.2",
+        "ethers": "^5.0.7",
+        "prettier": "^2.0.5",
+        "prettier-plugin-solidity": "^1.0.0-alpha.54"
+    },
+    "dependencies": {
+        "@openzeppelin/contracts": "^3.1.0",
+        "cross-env": "^7.0.2",
+        "npm-run-all": "^4.1.5",
+        "rimraf": "^3.0.2"
+    }
 }
