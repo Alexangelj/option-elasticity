@@ -1,9 +1,9 @@
-pragma solidity >=0.5.2 <=0.6.2;
+pragma solidity >=0.5.12 <=0.6.2;
 
 import { Pricing } from "./Pricing.sol";
 import { BFactory } from "../balancer-core/contracts/BFactory.sol";
 import { BPool } from "../balancer-core/contracts/BPool.sol";
-import { ERC20, IERC20 } from "./ERC20.sol";
+import { ERC20, IERC20 } from "./tokens/ERC20.sol";
 import "@nomiclabs/buidler/console.sol";
 
 contract PFactory is Pricing {
