@@ -12,6 +12,8 @@ import { SafeMath } from "../libraries/SafeMath.sol";
 import { IBPool } from "../interfaces/IBPool.sol";
 import { ILendingPool } from "../interfaces/ILendingPool.sol";
 
+import "@nomiclabs/buidler/console.sol";
+
 contract Trader {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
@@ -32,11 +34,14 @@ contract Trader {
         address[] memory tokens = optionPool.getFinalTokens();
         address underlyingToken = tokens[0];
         address quoteToken = tokens[1];
+        console.log(IERC20(underlyingToken).symbol(), IERC20(quoteToken).symbol());
         lendingPool.borrow(address(this), underlyingToken, 1 ether);
         IERC20(quoteToken).safeTransferFrom(msg.sender, address(this), amount);
         IERC20(underlyingToken).approve(address(optionPool), uint256(-1));
         IERC20(quoteToken).approve(address(optionPool), uint256(-1));
-        optionPool.joinswapExternAmountIn(underlyingToken, 1 ether, uint256(0));
-        optionPool.joinswapExternAmountIn(quoteToken, amount, uint256(0));
+        (uint poolAmountOut) = optionPool.joinswapExternAmountIn(underlyingToken, 1 ether, uint256(0));
+        poolAmountOut = poolAmountOut.add(optionPool.joinswapExternAmountIn(quoteToken, amount, uint256(0)));
+        // transfer pool shares out
+        optionPool.transfer(msg.sender, poolAmountOut);
     }
 }

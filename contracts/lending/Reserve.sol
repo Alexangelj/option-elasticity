@@ -11,6 +11,7 @@ import { IERC20 } from "../interfaces/IERC20.sol";
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
 import { Ownable } from "../utils/Ownable.sol";
+import "@nomiclabs/buidler/console.sol";
 
 contract Reserve is Ownable {
     using SafeMath for uint256;
@@ -61,6 +62,7 @@ contract Reserve is Ownable {
         uint256 actualAssetBalance = IERC20(asset).balanceOf(address(this)); // the actual balance
         uint256 storedAssetBalance = reserve.totalAssetBalance;
         uint256 balanceDifference = actualAssetBalance.sub(storedAssetBalance);
+        console.log(balanceDifference, actualAssetBalance, storedAssetBalance);
         require(balanceDifference >= enterQuantity, "ERR_INSUFFICIENT_DEPOSIT"); // fail early
 
         // update the actual reserve balance
@@ -130,7 +132,7 @@ contract Reserve is Ownable {
         uint256 totalSupply = reserve.debtToken.totalSupply();
 
         // If liquidity is not intiialized, mint the initial liquidity.
-        if (totalSupply == 0) {
+        if (totalSupply == 0 || totalAssetBalance == 0) {
             mintQuantity = mintQuantity;
         } else {
             mintQuantity = mintQuantity.mul(totalSupply).div(totalAssetBalance);

@@ -29,6 +29,10 @@ contract PFactory is Pricing {
         bPool = pool;
     }
 
+    function finalizePool(address poolAddress) public {
+        BPool(poolAddress).finalize();
+    }
+
     function approvePool() public {
         risky.approve(address(bPool), uint256(-1));
         riskFree.approve(address(bPool), uint256(-1));
