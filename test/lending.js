@@ -72,10 +72,14 @@ describe("Reserve/Lending Contract", () => {
         let factoryContract = Object.assign(BFactory, {
             evm: { bytecode: { object: BFactory.bytecode } },
         });
-        link(factoryContract, "BPoolTemplateLib", templateLib.address);
+        link(
+            factoryContract,
+            "balancer-core/contracts/BPoolTemplateLib.sol:BPoolTemplateLib",
+            templateLib.address
+        );
         factory = await ethers.getContractFactory(
             factoryContract.abi,
-            factoryContract.bytecode,
+            factoryContract.evm.bytecode,
             Admin
         );
         factory = await factory.deploy();
