@@ -5,27 +5,27 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @author Primitive
  */
 
+import { IIOU } from "../interfaces/IIOU.sol";
 import { ILendingPool } from "../interfaces/ILendingPool.sol";
 import { IERC20 } from "../interfaces/IERC20.sol";
+import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
-import { ABDKMath64x64 } from "../libraries/ABDKMath64x64.sol";
 import { Ownable } from "../utils/Ownable.sol";
-import "@nomiclabs/buidler/console.sol";
 
 contract Reserve is Ownable {
     using SafeMath for uint256;
-    using ABDKMath64x64 for *;
-
-    int128 public constant MANTISSA = 2**64;
-    uint128 public constant DENOMINATOR = 10**18;
+    using SafeERC20 for IERC20;
+    using SafeERC20 for IIOU;
 
     ILendingPool public lendingPool;
 
     struct ReserveData {
-        mapping(address => int128) assetBalances;
-        mapping(address => int128) borrowBalances;
-        mapping(address => int128) collateralBalances;
-        int128 totalAssetBalance;
+        IIOU debtToken;
+        mapping(address => uint256) assetBalances;
+        mapping(address => uint256) borrowBalances;
+        mapping(address => uint256) collateralBalances;
+        mapping(address => uint256) feeBalances;
+        uint256 totalAssetBalance;
         bool isBorrowingEnabled;
         bool isActive;
         bool isFrozen;
@@ -34,6 +34,7 @@ contract Reserve is Ownable {
     mapping(address => ReserveData) internal _reserves;
 
     event Deposited(address indexed from, address indexed asset, uint256 depositQuantity);
+    event Withdrawn(address indexed from, address indexed asset, uint256 withdrawQuantity);
 
     function initialize(address lendingPoolAddress) public onlyOwner {
         lendingPool = ILendingPool(lendingPoolAddress);
@@ -44,45 +45,104 @@ contract Reserve is Ownable {
         _;
     }
 
+    function updateStateWithDebtToken(address asset, address debtTokenAddress) public onlyOwner {
+        ReserveData storage reserve = _reserves[asset];
+        reserve.debtToken = IIOU(debtTokenAddress);
+    }
+
     function updateStateWithDeposit(
         address depositor,
         address asset,
-        uint256 enterQuantity
-    ) public onlyLendingPool returns (bool success, uint256 depositQuantity) {
+        uint256 enterQuantity /* onlyLendingPool */
+    ) public returns (bool success, uint256 depositQuantity) {
         ReserveData storage reserve = _reserves[asset]; // the reserve data for the asset
+
+        // calculate the tokens that were received
         uint256 actualAssetBalance = IERC20(asset).balanceOf(address(this)); // the actual balance
-        // the actual balance less the stored balance
-        uint256 balanceDifference = actualAssetBalance.sub(_fromInt(reserve.totalAssetBalance));
-        //require(balanceDifference >= enterQuantity, "ERR_INSUFFICIENT_DEPOSIT"); // fail early
+        uint256 storedAssetBalance = reserve.totalAssetBalance;
+        uint256 balanceDifference = actualAssetBalance.sub(storedAssetBalance);
+        require(balanceDifference >= enterQuantity, "ERR_INSUFFICIENT_DEPOSIT"); // fail early
 
         // update the actual reserve balance
-        reserve.totalAssetBalance = fromWeiToInt128(actualAssetBalance);
+        reserve.totalAssetBalance = actualAssetBalance;
 
         // update depositors balance with the difference
-        reserve.assetBalances[depositor] = reserve.assetBalances[depositor].add(
-            fromWeiToInt128(uint256(2**128 - 1))
-        );
+        reserve.assetBalances[depositor] = reserve.assetBalances[depositor].add(balanceDifference);
+
+        // mint the debt tokens
+        _mintDebt(reserve, storedAssetBalance, depositor, balanceDifference);
 
         emit Deposited(depositor, asset, balanceDifference);
         return (true, balanceDifference);
     }
 
-    function balanceOf(address account, address asset) public view returns (uint256) {
-        ReserveData storage reserve = _reserves[asset];
-        int128 balance = reserve.assetBalances[account];
-        return fromIntToWei(balance);
+    function updateStateWithWithdraw(
+        address withdrawer,
+        address asset,
+        uint256 exitQuantity /* onlyLendingPool */
+    ) public returns (bool success, uint256 withdrawQuantity) {
+        ReserveData storage reserve = _reserves[asset]; // the reserve data for the asset
+
+        // calculate the tokens that were received
+        uint256 actualDebtBalance = reserve.debtToken.balanceOf(address(this)); // the actual balance
+        require(actualDebtBalance >= uint256(0), "ERR_ZERO_BAL_DEBT"); // fail early
+
+        // mint the debt tokens
+        (withdrawQuantity) = _burnDebt(
+            reserve,
+            reserve.totalAssetBalance,
+            withdrawer,
+            actualDebtBalance
+        );
+
+        // transfer asset tokens
+        _transferAsset(asset, withdrawer, withdrawQuantity);
+
+        emit Withdrawn(withdrawer, asset, exitQuantity);
+        return (true, actualDebtBalance); 
     }
 
-    function _fromInt(int128 x) public pure returns (uint256 y) {
-        x = x.mul(MANTISSA);
-        y = x > 0 ? ABDKMath64x64.toUInt(x) : uint256(0);
+    function _transferAsset(
+        address asset,
+        address to,
+        uint256 quantity
+    ) internal {
+        IERC20(asset).safeTransfer(to, quantity);
     }
 
-    function fromIntToWei(int128 x) public pure returns (uint256 y) {
-        y = _fromInt(x).mul(DENOMINATOR);
+    function _mintDebt(
+        ReserveData storage reserve,
+        uint256 totalAssetBalance,
+        address to,
+        uint256 mintQuantity
+    ) internal {
+        // Mint LP tokens proportional to the Total LP Supply and Total Pool Balance.
+        uint256 totalSupply = reserve.debtToken.totalSupply();
+
+        // If liquidity is not intiialized, mint the initial liquidity.
+        if (totalSupply == 0) {
+            mintQuantity = mintQuantity;
+        } else {
+            mintQuantity = mintQuantity.mul(totalSupply).div(totalAssetBalance);
+        }
+
+        require(mintQuantity > uint256(0), "ERR_ZERO_LIQUIDITY");
+        reserve.debtToken.mint(to, mintQuantity);
     }
 
-    function fromWeiToInt128(uint256 x) public pure returns (int128) {
-        return x.divu(DENOMINATOR);
+    function _burnDebt(
+        ReserveData storage reserve,
+        uint256 totalAssetBalance,
+        address to,
+        uint256 burnQuantity
+    ) internal returns (uint256 receiveQuantity) {
+        require(reserve.debtToken.balanceOf(to) >= burnQuantity, "ERR_BURN_QUANTITY");
+        uint256 totalSupply = reserve.debtToken.totalSupply();
+
+        // Calculate output amounts.
+        receiveQuantity = burnQuantity.mul(totalAssetBalance).div(totalSupply);
+        require(receiveQuantity > uint256(0), "ERR_ZERO");
+        // Burn tokenPULP.
+        reserve.debtToken.burn(to, burnQuantity);
     }
 }

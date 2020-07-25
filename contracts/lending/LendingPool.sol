@@ -23,18 +23,18 @@ contract LendingPool is Ownable {
 
     event EnterLendingPool(address indexed from, address indexed asset, uint256 depositQuantity);
     event ExitLendingPool(address indexed from, address indexed asset, uint256 withdrawQuantity);
-    event Lend(
+    event Borrow(
         address indexed from,
         address indexed to,
         address indexed asset,
-        uint256 lendQuantity
+        uint256 borrowQuantity
     );
 
-    event FlashLend(
+    event FlashBorrow(
         address indexed from,
         address indexed to,
         address indexed asset,
-        uint256 lendQuantity
+        uint256 borrowQuantity
     );
 
     function initialize(address reserveAddress) public onlyOwner {
@@ -61,15 +61,29 @@ contract LendingPool is Ownable {
         return success;
     }
 
-    function exit() public {
+    function exit(
+        address withdrawer,
+        address asset,
+        uint256 exitQuantity
+    ) public {
         // removes liquidity from a pool by burning liquidity shares
+        IERC20(asset).safeTransferFrom(withdrawer, address(reserve), exitQuantity);
+
+        (bool success, uint256 withdrawQuantity) = reserve.updateStateWithWithdraw(
+            withdrawer,
+            asset,
+            exitQuantity
+        );
+
+        emit ExitLendingPool(withdrawer, asset, withdrawQuantity);
+        return success;
     }
 
-    function lend() public {
+    function borrow() public {
         // initiates a lending agreement between the LendingPool and a party
     }
 
-    function flashLend() public {
+    function flashBorrow() public {
         // initiates a flash lending transaction and expects all funds to be returned
     }
 }

@@ -6,4 +6,10 @@ interface IReserve {
         address asset,
         uint256 enterQuantity
     ) external returns (bool success, uint256 depositQuantity);
+
+    function updateStateWithWithdraw(
+        address withdrawer,
+        address asset,
+        uint256 exitQuantity /* onlyLendingPool */
+    ) external returns (bool success, uint256 withdrawQuantity);
 }
