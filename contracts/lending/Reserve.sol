@@ -99,7 +99,17 @@ contract Reserve is Ownable {
         _transferAsset(asset, withdrawer, withdrawQuantity);
 
         emit Withdrawn(withdrawer, asset, exitQuantity);
-        return (true, actualDebtBalance); 
+        return (true, actualDebtBalance);
+    }
+
+    function borrow(
+        address borrower,
+        address asset,
+        uint256 borrowQuantity
+    ) public {
+        ReserveData storage reserve = _reserves[asset];
+        require(reserve.totalAssetBalance >= borrowQuantity, "ERR_INSUFFICIENT_LIQUIDITY");
+        _transferAsset(asset, borrower, borrowQuantity);
     }
 
     function _transferAsset(

@@ -1,8 +1,34 @@
 {
   "contractName": "ILendingPool",
-  "abi": [],
-  "bytecode": "0x6080604052348015600f57600080fd5b50603e80601d6000396000f3fe6080604052600080fdfea265627a7a7231582044011b3f16d45c0e9fbbd8bb11008ce87a826356e53b48eb3e5f8b896b9b8c3d64736f6c634300050c0032",
-  "deployedBytecode": "0x6080604052600080fdfea265627a7a7231582044011b3f16d45c0e9fbbd8bb11008ce87a826356e53b48eb3e5f8b896b9b8c3d64736f6c634300050c0032",
+  "abi": [
+    {
+      "constant": false,
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "borrower",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "asset",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "borrowQuantity",
+          "type": "uint256"
+        }
+      ],
+      "name": "borrow",
+      "outputs": [],
+      "payable": false,
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
   "linkReferences": {},
   "deployedLinkReferences": {}
 }

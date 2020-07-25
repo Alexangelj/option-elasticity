@@ -12,4 +12,10 @@ interface IReserve {
         address asset,
         uint256 exitQuantity /* onlyLendingPool */
     ) external returns (bool success, uint256 withdrawQuantity);
+
+    function borrow(
+        address borrower,
+        address asset,
+        uint256 borrowQuantity
+    ) external;
 }
