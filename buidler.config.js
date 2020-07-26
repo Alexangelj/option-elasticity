@@ -22,6 +22,7 @@ module.exports = {
         local: {
             url: "http://127.0.0.1:8545",
             gasPrice: 80000000000,
+            gas: 10000000,
             timeout: 1000000,
         },
     },

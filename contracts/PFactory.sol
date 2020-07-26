@@ -1,14 +1,16 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
 import { Pricing } from "./Pricing.sol";
-import { BFactory } from "../balancer-core/contracts/BFactory.sol";
-import { BPool } from "../balancer-core/contracts/BPool.sol";
-import { ERC20, IERC20 } from "./tokens/ERC20.sol";
+import { IBFactory } from "./interfaces/IBFactory.sol";
+import { IBPool } from "./interfaces/IBPool.sol";
+import { IERC20 } from "./tokens/ERC20.sol";
+import { SafeMath } from "./libraries/SafeMath.sol";
 import "@nomiclabs/buidler/console.sol";
 
-contract PFactory is Pricing {
-    BFactory public bFactory;
-    BPool public bPool;
+contract PFactory /* is Pricing */ {
+    using SafeMath for uint;
+    IBFactory public bFactory;
+    IBPool public bPool;
     IERC20 public risky;
     IERC20 public riskFree;
 
@@ -19,18 +21,18 @@ contract PFactory is Pricing {
         address _risky,
         address _riskFree
     ) public {
-        bFactory = BFactory(_bFactory);
+        bFactory = IBFactory(_bFactory);
         risky = IERC20(_risky);
         riskFree = IERC20(_riskFree);
     }
 
-    function deployPool() public returns (BPool pool) {
+    function deployPool() public returns (IBPool pool) {
         pool = bFactory.newBPool(1);
         bPool = pool;
     }
 
     function finalizePool(address poolAddress) public {
-        BPool(poolAddress).finalize();
+        IBPool(poolAddress).finalize();
     }
 
     function approvePool() public {
@@ -56,7 +58,7 @@ contract PFactory is Pricing {
         uint256 o,
         uint256 t
     ) public {
-        (uint256 riskyW, uint256 riskFW) = getWeights(s, k, o, t);
+        (uint256 riskyW, uint256 riskFW) = Pricing.getWeights(s, k, o, t);
         (uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyW, riskFW);
         risky.transferFrom(msg.sender, address(this), riskyAmount);
         riskFree.transferFrom(msg.sender, address(this), riskFreeAmount);
@@ -74,7 +76,7 @@ contract PFactory is Pricing {
         uint256 o,
         uint256 t
     ) public {
-        (uint256 riskyW, uint256 riskFW) = getWeights(s, k, o, t);
+        (uint256 riskyW, uint256 riskFW) = Pricing.getWeights(s, k, o, t);
         (uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyW, riskFW);
         bPool.bind(address(risky), riskyAmount, riskyW.mul(25));
         bPool.bind(
