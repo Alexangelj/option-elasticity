@@ -17,7 +17,7 @@ import { IBPool } from "../interfaces/IBPool.sol";
 
 import "@nomiclabs/buidler/console.sol";
 
-contract LendingPool is Ownable {
+contract LendingPool is Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -89,18 +89,17 @@ contract LendingPool is Ownable {
         address asset,
         uint256 borrowQuantity,
         bytes memory params
-    ) public returns (bool) {
+    ) public nonReentrant returns (bool) {
         // fail early
         // require(optionPool.isBPool())
         // initiates a lending agreement between the LendingPool and a party
         reserve.borrow(borrower, asset, borrowQuantity);
         ISecuredLoanReceiver caller = ISecuredLoanReceiver(msg.sender);
-        caller.secureLoan(optionPool, borrowQuantity, uint256(0), params);
+        emit Borrowed(msg.sender, borrower, asset, borrowQuantity);
+        return caller.secureLoan(optionPool, borrowQuantity, uint256(0), params);
         //(bool success, bytes memory data) = msg.sender.call(params);
         //console.logBool(success);
         //require(success, "ERR_CALLING_FAILED");
-        emit Borrowed(msg.sender, borrower, asset, borrowQuantity);
-        return true;
     }
 
     function depositCollateral(

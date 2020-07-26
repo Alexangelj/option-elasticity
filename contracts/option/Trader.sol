@@ -29,6 +29,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         address quoteToken;
         uint lotSize;
         uint premium;
+        uint lpSharePayment;
     }
 
     function initialize(address lendingPoolAddress) public {
@@ -71,11 +72,14 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         _checkApproval(quoteToken, address(optionPool), premium.mul(lotSize).div(1 ether));
         // initiate transaction
         SyntheticPosition memory position;
-        position.underlyingToken = underlyingToken;
+        {
         position.optionPool = optionPool;
+        position.buyer = msg.sender;
+        position.underlyingToken = underlyingToken;
         position.quoteToken = quoteToken;
         position.lotSize = lotSize;
         position.premium = premium;
+        }
         //_syntheticPosition(optionPool, underlyingToken, quoteToken, lotSize, premium);
         _syntheticPosition(position);
     }
@@ -96,7 +100,8 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         // call borrow, borrowing the underlying asset and paying the lp tokens
         // borrow 1 unit of risky asset from lending pool and deposit into pool
         // collateral is lp shares from quote token + lp shares from underlying token deposits
-        return _borrow(position.optionPool, position.underlyingToken, position.lotSize);
+        position.lpSharePayment = poolAmountOut;
+        return _borrow(position);
     }
 
     /* function _syntheticPosition(
@@ -142,20 +147,22 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         uint256 loanedQuantity,
         uint256 fee,
         bytes calldata params
-    ) external {
+    ) external returns (bool) {
         (bool success, bytes memory data) = address(this).call(params);
-        require(success, "ERR_CALL_FAILED");
+        require(success, "ERR_SECURE_LOAN_CALL_FAIL");
+        return success;
     }
 
     // funcsig: f4a0fa60
     function _depositAndCollateralize(
+        address buyer,
         address optionPool,
         address token,
         uint256 input,
-        uint256 output
+        uint256 payment
     ) public returns (bool) {
-        uint256 poolAmountOut = _enterPool(IBPool(optionPool), token, input);
-        return _depositCollateral(optionPool, poolAmountOut);
+        uint256 poolAmountOut = _enterPool(IBPool(optionPool), token, input).add(payment);
+        return _depositCollateral(buyer, optionPool, poolAmountOut);
 
     }
 
@@ -169,7 +176,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         require(poolAmountOut >= minOutput && poolAmountOut > 0, "ERR_INSUFFICIENT_LP");
     }
 
-    function _depositCollateral(address optionPoolAddress, uint256 poolAmountOut)
+    function _depositCollateral(address buyer, address optionPoolAddress, uint256 poolAmountOut)
         internal
         returns (bool)
     {
@@ -180,7 +187,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         require(
             lendingPool.depositCollateral(
                 address(this),
-                address(lendingPool),
+                buyer,
                 optionPoolAddress,
                 poolAmountOut
             ),
@@ -195,6 +202,24 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
     }
 
     function _borrow(
+        SyntheticPosition memory position
+    ) internal nonReentrant returns (bool) {
+        // should pass in data to deposit and then send lp tokens out
+        bytes4 selector = bytes4(
+            keccak256(bytes("_depositAndCollateralize(address,address,address,uint256,uint256)"))
+        );
+        bytes memory params = abi.encodeWithSelector(
+            selector,
+            position.buyer,
+            address(position.optionPool),
+            position.underlyingToken,
+            position.lotSize,
+            position.lpSharePayment
+        );
+        return lendingPool.borrow(position.optionPool, address(this), position.underlyingToken, position.lotSize, params);
+    }
+
+    /* function _borrow(
         IBPool optionPool,
         address token,
         uint256 amount
@@ -211,7 +236,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
             uint256(0)
         );
         return lendingPool.borrow(optionPool, address(this), token, amount, params);
-    }
+    } */
 
     function calculatePoolAmountOut(
         IBPool optionPool,
