@@ -46,21 +46,38 @@ contract Trader {
         _checkApproval(underlyingToken, address(optionPool), 1 ether);
         _checkApproval(quoteToken, address(optionPool), amount);
         // transfer premium (say $1) from user to this address
-        IERC20(quoteToken).safeTransferFrom(msg.sender, address(this), amount);
+        _pull(quoteToken, amount);
         // borrow 1 unit of risky asset from lending pool
-        lendingPool.borrow(address(this), underlyingToken, 1 ether);
+        _borrow(underlyingToken, 1 ether);
         // deposit liquidity to pool
         //console.log(optionPool.getBalance(underlyingToken), optionPool.getBalance(quoteToken));
         // FIX - need to calculate net of fees amount of lp tokens out
         uint underlyingOut = uint(0);
         uint quoteOut = uint(0);
-        (uint poolAmountOut) = optionPool.joinswapExternAmountIn(underlyingToken, 1 ether / 100, underlyingOut);
-        poolAmountOut = poolAmountOut.add(optionPool.joinswapExternAmountIn(quoteToken, amount, quoteOut));
+        (uint poolAmountOut) = _enterPool(optionPool, underlyingToken, 1 ether / 100, underlyingOut);
+        poolAmountOut = poolAmountOut.add(_enterPool(optionPool, quoteToken, amount, quoteOut));
         // send lp share to lending pool as collateral
         // transfer pool shares out
-        _checkApproval(address(optionPool), address(lendingPool), poolAmountOut);
-        lendingPool.depositCollateral(address(this), msg.sender, address(optionPool), poolAmountOut);
+        _depositCollateral(address(optionPool), poolAmountOut);
         // mint some tokenized form of receipt for purchasing the option
+    }
+
+    function _enterPool(IBPool optionPool, address token, uint inputQuantity, uint minOutputQuantity) internal returns (uint poolAmountOut) {
+        poolAmountOut = optionPool.joinswapExternAmountIn(token, inputQuantity, minOutputQuantity);
+    }
+
+    function _depositCollateral(address optionPoolAddress, uint poolAmountOut) internal returns (bool) {
+        _checkApproval(optionPoolAddress, address(lendingPool), poolAmountOut);
+        return lendingPool.depositCollateral(address(this), msg.sender, optionPoolAddress, poolAmountOut);
+    }
+
+    function _pull(address token, uint amount) internal returns (bool) {
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        return true;
+    }
+
+    function _borrow(address token, uint amount) internal returns (bool) {
+        return lendingPool.borrow(address(this), token, amount);
     }
 
     function _borrowJoinDepositCollateral() internal returns (bool) {

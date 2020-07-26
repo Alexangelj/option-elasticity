@@ -122,7 +122,7 @@ describe("Reserve/Lending Contract", () => {
 
             // purchases an option using borrowed ether + premium
             await trader.buyOption(pool.address, parseEther("1"));
-
+            console.log(formatEther(await pool.balanceOf(reserve.address)), formatEther(await iPool.balanceOf(Alice)));
         });
     });
 });
