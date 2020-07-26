@@ -23,14 +23,14 @@ const setupTokens = async () => {
     iEther = await iEther.deploy();
     iDai = await ethers.getContractFactory("IOU");
     iDai = await iDai.deploy();
-    let tokens = {
-        ether,
-        dai,
-        iEther,
-        iDai,
-    };
-    return tokens;
+    return [ether, dai, iEther, iDai];
 };
+
+const setupDebtToken = async () => {
+    debtToken = await ethers.getContractFactory("IOU");
+    debtToken = await debtToken.deploy();
+    return debtToken;
+}
 
 const setupMultipleContracts = async (arrayOfContractNames) => {
     let contracts = [];
@@ -154,9 +154,19 @@ const calculateAmounts = async (primitiveProxy, weights) => {
     return amounts;
 };
 
-const setupDebtToken = async (reserve, assetToken, debtToken) => {
+const linkDebtToken = async (reserve, assetToken, debtToken) => {
     await debtToken.initialize(reserve.address);
     await reserve.updateStateWithDebtToken(assetToken.address, debtToken.address);
+};
+
+const getMultipleBalances = async (tokensArray, account) => {
+    let balancesArray = [];
+    for (let i = 0; i < tokensArray.length; i++) {
+        let token = tokensArray[i];
+        let bal = await token.balanceOf(account);
+        balancesArray.push(bal);
+    }
+    return balancesArray;
 };
 
 Object.assign(module.exports, {
@@ -164,10 +174,12 @@ Object.assign(module.exports, {
     setupMultipleContracts,
     batchApproval,
     setupLendingProtocol,
-    setupDebtToken,
+    linkDebtToken,
     setupOptionProtocol,
     setupOptionPool,
     calculateWeights,
     calibratePool,
     calculateAmounts,
+    getMultipleBalances,
+    setupDebtToken
 });

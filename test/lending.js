@@ -14,10 +14,12 @@ const {
     setupMultipleContracts,
     batchApproval,
     setupLendingProtocol,
-    setupDebtToken,
+    linkDebtToken,
     setupOptionProtocol,
     setupOptionPool,
     calibratePool,
+    getMultipleBalances,
+    setupDebtToken
 } = require("./setup.js");
 
 const ethers = bre.ethers;
@@ -29,9 +31,10 @@ const newWallets = async () => {
 
 describe("Reserve/Lending Contract", () => {
     let wallets, Admin, Alice, lending, reserve, asset, trader, debtToken;
-    let ether, dai, iEther, iDai;
+    let ether, dai, iEther, iDai, iPool;
     let risky, riskFree, pricing, poolFactory, pfi;
     let s, k, o, t;
+    let etherBalance, daiBalance, iEtherBalance, iDaiBalance;
 
     const DENOMINATOR = 2 ** 64;
 
@@ -40,12 +43,9 @@ describe("Reserve/Lending Contract", () => {
         wallets = await newWallets();
         Admin = wallets[0];
         Alice = Admin._address;
-        let tokens = await setupTokens();
-        ether = tokens.ether;
-        dai = tokens.dai;
+        // standard erc20s with mint functions
         // iou mappings at a 1:1 ratio with undelying asset. Deposit 1 ether => get 1 iEther
-        iEther = tokens.iEther;
-        iDai = tokens.iDai;
+        [ether, dai, iEther, iDai] = await setupTokens();
 
         // gets contract factory for the contract names then calls deploy() on them
         [lending, reserve, trader, pricing, pfi] = await setupMultipleContracts([
@@ -58,13 +58,9 @@ describe("Reserve/Lending Contract", () => {
         // calls initialize() on each of the contracts, passing their addresses to eachother
         await setupLendingProtocol(lending, reserve, trader);
         // links an asset to a debt token with a 1:1 mapping.
-        await setupDebtToken(reserve, dai, iDai);
-        await setupDebtToken(reserve, ether, iEther);
+        await linkDebtToken(reserve, dai, iDai);
+        await linkDebtToken(reserve, ether, iEther);
 
-        let contractsToApprove = [lending, reserve, trader, pfi];
-        let tokensToBeApproved = [ether, dai, iEther, iDai];
-        let ownersToApprove = [Admin];
-        await batchApproval(contractsToApprove, tokensToBeApproved, ownersToApprove);
 
         // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
         s = parseEther("101");
@@ -77,6 +73,21 @@ describe("Reserve/Lending Contract", () => {
 
         // get the first pool that was deployed
         pool = await setupOptionPool(pfi, poolFactory, ether, dai, Admin);
+        iPool = await setupDebtToken();
+        await linkDebtToken(reserve, pool, iPool);
+
+        // approve tokens
+        let contractsToApprove = [lending, reserve, trader, pfi];
+        let tokensToBeApproved = [ether, dai, iEther, iDai, pool];
+        let ownersToApprove = [Admin];
+        await batchApproval(contractsToApprove, tokensToBeApproved, ownersToApprove);
+
+
+        // initial balances
+        [etherBalance, daiBalance, iEtherBalance, iDaiBalance] = await getMultipleBalances(
+            tokensToBeApproved,
+            Alice
+        );
     });
 
     describe("Test Reserve Functions", () => {
@@ -108,18 +119,10 @@ describe("Reserve/Lending Contract", () => {
             let optionBal = await pool.balanceOf(trader.address);
             let riskyBal = await ether.balanceOf(Alice);
             let riskFreeBal = await dai.balanceOf(Alice);
-            console.log(optionBal.toString(), formatEther(await pool.balanceOf(Alice)));
-            console.log(formatEther(riskyBal), formatEther(riskFreeBal));
 
             // purchases an option using borrowed ether + premium
             await trader.buyOption(pool.address, parseEther("1"));
 
-            // redeems lp shares for assets in pool
-            await pool.exitPool(await pool.balanceOf(Alice), [0, 0]);
-            riskyBal = (await ether.balanceOf(Alice)).sub(riskyBal);
-            riskFreeBal = (await dai.balanceOf(Alice)).sub(riskFreeBal);
-            console.log(formatEther(await pool.balanceOf(Alice)));
-            console.log(formatEther(riskyBal), formatEther(riskFreeBal));
         });
     });
 });

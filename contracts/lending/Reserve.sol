@@ -60,15 +60,14 @@ contract Reserve is Ownable {
 
         // calculate the tokens that were received
         uint256 actualAssetBalance = IERC20(asset).balanceOf(address(this)); // the actual balance
-        uint256 storedAssetBalance = reserve.totalAssetBalance;
-        uint256 balanceDifference = actualAssetBalance.sub(storedAssetBalance);
-        console.log(balanceDifference, actualAssetBalance, storedAssetBalance);
+        uint256 storedAssetBalance = reserve.totalAssetBalance; // the stored total balance
+        uint256 balanceDifference = actualAssetBalance.sub(storedAssetBalance); // the tokens sent in
         require(balanceDifference >= enterQuantity, "ERR_INSUFFICIENT_DEPOSIT"); // fail early
 
-        // update the actual reserve balance
+        // update the actual reserve state balance
         reserve.totalAssetBalance = actualAssetBalance;
 
-        // update depositors balance with the difference
+        // update depositor's state balance with the difference
         reserve.assetBalances[depositor] = reserve.assetBalances[depositor].add(balanceDifference);
 
         // mint the debt tokens

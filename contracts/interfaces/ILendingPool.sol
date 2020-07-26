@@ -6,4 +6,11 @@ interface ILendingPool {
         address asset,
         uint256 borrowQuantity
     ) external;
+
+    function depositCollateral(
+        address from,
+        address to,
+        address asset,
+        uint256 enterQuantity
+    ) external returns (bool);
 }

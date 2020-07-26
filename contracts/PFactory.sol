@@ -43,11 +43,11 @@ contract PFactory is Pricing {
         pure
         returns (uint256 riskyAmount, uint256 riskFreeAmount)
     {
-        uint256 riskyPrice = 100 ether; // $100
-        uint256 riskFreePrice = 1 ether; // $1
+        uint256 riskyPrice = 100 ether; // 1 per 100
+        uint256 riskFreePrice = 10000 ether; //
         // 100 * 10 ^ 18, 5.6 * 10 ^ 18. 100 / 5.6 = 17.85
         riskyAmount = riskyPrice.mul(riskyWeight).div(1 ether);
-        riskFreeAmount = riskFreePrice.mul(riskFreeWeight).mul(riskyPrice).div(10**36);
+        riskFreeAmount = riskFreePrice.mul(riskFreeWeight).div(1 ether);
     }
 
     function initializePool(
@@ -58,7 +58,6 @@ contract PFactory is Pricing {
     ) public {
         (uint256 riskyW, uint256 riskFW) = getWeights(s, k, o, t);
         (uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyW, riskFW);
-        //console.log(riskyAmount, riskFreeAmount, riskyW, riskFW);
         risky.transferFrom(msg.sender, address(this), riskyAmount);
         riskFree.transferFrom(msg.sender, address(this), riskFreeAmount);
         bPool.bind(address(risky), riskyAmount, riskyW.mul(25));

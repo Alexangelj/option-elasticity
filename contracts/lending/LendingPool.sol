@@ -89,6 +89,27 @@ contract LendingPool is Ownable {
         emit Borrowed(msg.sender, borrower, asset, borrowQuantity);
     }
 
+    function depositCollateral(
+        address from,
+        address to,
+        address asset,
+        uint256 enterQuantity
+    ) public returns (bool) {
+        // adds liquidity to a pool of reserve asset and receives liquidity shares
+        // transfers tokens to reserve
+        IERC20(asset).safeTransferFrom(from, address(reserve), enterQuantity);
+        // calls reserve.deposit
+        (bool success, uint256 depositQuantity) = reserve.updateStateWithDeposit(
+            to,
+            asset,
+            enterQuantity
+        );
+        // reserve returns amount that was deposited
+        // emits event
+        emit EnterLendingPool(to, asset, depositQuantity);
+        return success;
+    }
+
     function flashBorrow() public {
         // initiates a flash lending transaction and expects all funds to be returned
     }
