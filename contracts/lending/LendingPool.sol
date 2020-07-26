@@ -8,10 +8,14 @@ pragma solidity >=0.5.12 <=0.6.2;
 import { IERC20 } from "../interfaces/IERC20.sol";
 import { IReserve } from "../interfaces/IReserve.sol";
 import { ILendingComptroller } from "../interfaces/ILendingComptroller.sol";
+import { ISecuredLoanReceiver } from "../interfaces/ISecuredLoanReceiver.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { Ownable } from "../utils/Ownable.sol";
 import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
+import { IBPool } from "../interfaces/IBPool.sol";
+
+import "@nomiclabs/buidler/console.sol";
 
 contract LendingPool is Ownable {
     using SafeMath for uint256;
@@ -80,12 +84,21 @@ contract LendingPool is Ownable {
     }
 
     function borrow(
+        IBPool optionPool,
         address borrower,
         address asset,
-        uint256 borrowQuantity
+        uint256 borrowQuantity,
+        bytes memory params
     ) public {
+        // fail early
+        // require(optionPool.isBPool())
         // initiates a lending agreement between the LendingPool and a party
         reserve.borrow(borrower, asset, borrowQuantity);
+        ISecuredLoanReceiver caller = ISecuredLoanReceiver(msg.sender);
+        caller.secureLoan(optionPool, borrowQuantity, uint256(0), params);
+        //(bool success, bytes memory data) = msg.sender.call(params);
+        //console.logBool(success);
+        //require(success, "ERR_CALLING_FAILED");
         emit Borrowed(msg.sender, borrower, asset, borrowQuantity);
     }
 
@@ -107,6 +120,7 @@ contract LendingPool is Ownable {
         // reserve returns amount that was deposited
         // emits event
         emit EnterLendingPool(to, asset, depositQuantity);
+        require(success, "ERR_UPDATING_STATE_DEPOSIT");
         return success;
     }
 

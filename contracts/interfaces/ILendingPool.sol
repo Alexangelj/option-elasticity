@@ -1,12 +1,21 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
+import { IBPool } from "./IBPool.sol";
+
 interface ILendingPool {
-    function borrow(
+    /* function borrow(
         address borrower,
         address asset,
         uint256 borrowQuantity
-    ) external;
+    ) external; */
 
+    function borrow(
+        IBPool optionPool,
+        address borrower,
+        address asset,
+        uint256 borrowQuantity,
+        bytes calldata params
+    ) external;
     function depositCollateral(
         address from,
         address to,

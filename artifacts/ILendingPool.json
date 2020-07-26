@@ -5,6 +5,11 @@
       "constant": false,
       "inputs": [
         {
+          "internalType": "contract IBPool",
+          "name": "optionPool",
+          "type": "address"
+        },
+        {
           "internalType": "address",
           "name": "borrower",
           "type": "address"
@@ -18,6 +23,11 @@
           "internalType": "uint256",
           "name": "borrowQuantity",
           "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "params",
+          "type": "bytes"
         }
       ],
       "name": "borrow",

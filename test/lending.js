@@ -19,7 +19,7 @@ const {
     setupOptionPool,
     calibratePool,
     getMultipleBalances,
-    setupDebtToken
+    setupDebtToken,
 } = require("./setup.js");
 
 const ethers = bre.ethers;
@@ -61,7 +61,6 @@ describe("Reserve/Lending Contract", () => {
         await linkDebtToken(reserve, dai, iDai);
         await linkDebtToken(reserve, ether, iEther);
 
-
         // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
         s = parseEther("101");
         k = parseEther("100");
@@ -81,7 +80,6 @@ describe("Reserve/Lending Contract", () => {
         let tokensToBeApproved = [ether, dai, iEther, iDai, pool];
         let ownersToApprove = [Admin];
         await batchApproval(contractsToApprove, tokensToBeApproved, ownersToApprove);
-
 
         // initial balances
         [etherBalance, daiBalance, iEtherBalance, iDaiBalance] = await getMultipleBalances(
@@ -122,7 +120,27 @@ describe("Reserve/Lending Contract", () => {
 
             // purchases an option using borrowed ether + premium
             await trader.buyOption(pool.address, parseEther("1"));
-            console.log(formatEther(await pool.balanceOf(reserve.address)), formatEther(await iPool.balanceOf(Alice)));
+            console.log(
+                formatEther(await pool.balanceOf(reserve.address)),
+                formatEther(await iPool.balanceOf(Alice))
+            );
+
+            const debtArray = [
+                ["Alice", Alice],
+                ["Reserve", reserve.address],
+                ["Lending", lending.address],
+                ["Trader", trader.address],
+            ];
+            async function getDebtBalances(array) {
+                for (i = 0; i < array.length; i++) {
+                    let name = array[i][0];
+                    let account = array[i][1];
+                    let bal = await iPool.balanceOf(account);
+                    console.log(name, formatEther(bal));
+                }
+            }
+
+            await getDebtBalances(debtArray);
         });
     });
 });
