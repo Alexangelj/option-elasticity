@@ -12,14 +12,24 @@ import { SafeMath } from "../libraries/SafeMath.sol";
 import { IBPool } from "../interfaces/IBPool.sol";
 import { ILendingPool } from "../interfaces/ILendingPool.sol";
 import { ISecuredLoanReceiver } from "../interfaces/ISecuredLoanReceiver.sol";
+import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
 
 import "@nomiclabs/buidler/console.sol";
 
-contract Trader is ISecuredLoanReceiver {
+contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     ILendingPool public lendingPool;
+
+    struct SyntheticPosition {
+        IBPool optionPool;
+        address buyer;
+        address underlyingToken;
+        address quoteToken;
+        uint lotSize;
+        uint premium;
+    }
 
     function initialize(address lendingPoolAddress) public {
         lendingPool = ILendingPool(lendingPoolAddress);
@@ -48,27 +58,83 @@ contract Trader is ISecuredLoanReceiver {
     }
 
     // needs to check optionPoolAddress
-    function buyOption(address optionPoolAddress, uint256 amount) public {
+    function buyOption(address optionPoolAddress, uint256 lotSize) public {
+        // get the actual pool
         IBPool optionPool = IBPool(optionPoolAddress);
+        // get the pools assets
         (address underlyingToken, address quoteToken) = getTokens(optionPool);
+        // get premium
+        uint256 premium = 1 ether;
         // approve the tokens to be transferred into the pool
-        _checkApproval(underlyingToken, address(optionPool), 1 ether);
-        _checkApproval(quoteToken, address(optionPool), amount);
-        // transfer premium (say $1) from user to this address
-        _pull(quoteToken, amount);
-        // borrow 1 unit of risky asset from lending pool
-        _borrow(optionPool, underlyingToken, 1 ether);
-        // deposit liquidity to pool
-        //console.log(optionPool.getBalance(underlyingToken), optionPool.getBalance(quoteToken));
-        // FIX - need to calculate net of fees amount of lp tokens out
-        /* uint underlyingOut = uint(0);
-        uint quoteOut = uint(0);
-        (uint poolAmountOut) = _enterPool(optionPool, underlyingToken, 1 ether / 100, underlyingOut);
-        poolAmountOut = poolAmountOut.add(_enterPool(optionPool, quoteToken, amount, quoteOut));
-        // send lp share to lending pool as collateral
-        // transfer pool shares out
-        _depositCollateral(address(optionPool), poolAmountOut); */
-        // mint some tokenized form of receipt for purchasing the option
+        _checkApproval(underlyingToken, address(optionPool), lotSize);
+        // make sure for each option, the full premium can be paid.
+        _checkApproval(quoteToken, address(optionPool), premium.mul(lotSize).div(1 ether));
+        // initiate transaction
+        SyntheticPosition memory position;
+        position.underlyingToken = underlyingToken;
+        position.optionPool = optionPool;
+        position.quoteToken = quoteToken;
+        position.lotSize = lotSize;
+        position.premium = premium;
+        //_syntheticPosition(optionPool, underlyingToken, quoteToken, lotSize, premium);
+        _syntheticPosition(position);
+    }
+
+    function _syntheticPosition(
+        SyntheticPosition memory position
+    ) internal returns (bool) {
+        // everythings about to get put into a maze, so lets track the original buyer
+        address buyer = position.buyer;
+        // pull the premium for the lot size so we can deposit it into the pool
+        _pull(position.quoteToken, position.premium);
+        // calculate the expected amount of lp shares received for the deposit
+        uint256 minOutput = calcExpectedPoolOut(position.optionPool, position.quoteToken, position.premium);
+        // deposit position.premium denominated in quote token and returns LP share tokens
+        (uint poolAmountOut) = _enterPool(position.optionPool, position.quoteToken, position.premium);
+        // check lp shares have been paid for the corresponding lot size
+        require(poolAmountOut >= minOutput, "ERR_INSUFFICIENT_LP");
+        // call borrow, borrowing the underlying asset and paying the lp tokens
+        // borrow 1 unit of risky asset from lending pool and deposit into pool
+        // collateral is lp shares from quote token + lp shares from underlying token deposits
+        return _borrow(position.optionPool, position.underlyingToken, position.lotSize);
+    }
+
+    /* function _syntheticPosition(
+        IBPool optionPool,
+        address underlyingToken,
+        address quoteToken,
+        uint256 lotSize,
+        uint256 premium
+    ) internal returns (bool) {
+        // everythings about to get put into a maze, so lets track the original buyer
+        address buyer = msg.sender;
+        // pull the premium for the lot size so we can deposit it into the pool
+        _pull(quoteToken, premium);
+        // calculate the expected amount of lp shares received for the deposit
+        uint256 minOutput = calcExpectedPoolOut(optionPool, quoteToken, premium);
+        // deposit premium denominated in quote token and returns LP share tokens
+        (uint poolAmountOut) = _enterPool(optionPool, quoteToken, premium, minOutput);
+        // check lp shares have been paid for the corresponding lot size
+        require(poolAmountOut >= minOutput, "ERR_INSUFFICIENT_LP");
+        // call borrow, borrowing the underlying asset and paying the lp tokens
+        // borrow 1 unit of risky asset from lending pool and deposit into pool
+        // collateral is lp shares from quote token + lp shares from underlying token deposits
+        return _borrow(optionPool, underlyingToken, lotSize);
+    } */
+
+    function calcExpectedPoolOut(IBPool optionPool, address inputToken, uint tokenAmountIn) public view returns (uint poolAmountOut) {
+        uint tokenBalanceIn;
+        uint tokenWeightIn;
+        {
+        (address token0, address token1) = getTokens(optionPool);
+        uint balanceToken0 = optionPool.getBalance(token0);
+        uint balanceToken1 = optionPool.getBalance(token1);
+        uint weightToken0 = optionPool.getDenormalizedWeight(token0);
+        uint weightToken1 = optionPool.getDenormalizedWeight(token1);
+        tokenBalanceIn = token0 == inputToken ? balanceToken0 : balanceToken1;
+        tokenWeightIn = token0 == inputToken ? weightToken0 : weightToken1;
+        }
+        poolAmountOut = optionPool.calcPoolOutGivenSingleIn(tokenBalanceIn, tokenWeightIn, optionPool.totalSupply(), optionPool.getTotalDenormalizedWeight(), tokenAmountIn, optionPool.getSwapFee());
     }
 
     function secureLoan(
@@ -88,19 +154,19 @@ contract Trader is ISecuredLoanReceiver {
         uint256 input,
         uint256 output
     ) public returns (bool) {
-        uint256 poolAmountOut = _enterPool(IBPool(optionPool), token, input, output);
-        require(poolAmountOut > 0, "ERR_ENTERING_POOL");
-        require(_depositCollateral(optionPool, poolAmountOut), "ERR_DEPOSITING_COLLATERAL");
-        return true;
+        uint256 poolAmountOut = _enterPool(IBPool(optionPool), token, input);
+        return _depositCollateral(optionPool, poolAmountOut);
+
     }
 
     function _enterPool(
         IBPool optionPool,
         address token,
-        uint256 inputQuantity,
-        uint256 minOutputQuantity
+        uint256 inputQuantity
     ) internal returns (uint256 poolAmountOut) {
-        poolAmountOut = optionPool.joinswapExternAmountIn(token, inputQuantity, minOutputQuantity);
+        uint256 minOutput = calcExpectedPoolOut(optionPool, token, inputQuantity);
+        (poolAmountOut) = optionPool.joinswapExternAmountIn(token, inputQuantity, minOutput);
+        require(poolAmountOut >= minOutput && poolAmountOut > 0, "ERR_INSUFFICIENT_LP");
     }
 
     function _depositCollateral(address optionPoolAddress, uint256 poolAmountOut)
@@ -132,24 +198,20 @@ contract Trader is ISecuredLoanReceiver {
         IBPool optionPool,
         address token,
         uint256 amount
-    ) internal returns (bool) {
+    ) internal nonReentrant returns (bool) {
         // should pass in data to deposit and then send lp tokens out
-        bytes4 computedSelector = bytes4(
+        bytes4 selector = bytes4(
             keccak256(bytes("_depositAndCollateralize(address,address,uint256,uint256)"))
         );
-        bytes4 selector = 0xf4a0fa60;
         bytes memory params = abi.encodeWithSelector(
-            computedSelector,
+            selector,
             address(optionPool),
             token,
             amount,
             uint256(0)
         );
-        lendingPool.borrow(optionPool, address(this), token, amount, params);
-        return true;
+        return lendingPool.borrow(optionPool, address(this), token, amount, params);
     }
-
-    function _borrowJoinDepositCollateral() internal returns (bool) {}
 
     function calculatePoolAmountOut(
         IBPool optionPool,

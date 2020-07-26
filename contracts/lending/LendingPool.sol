@@ -89,7 +89,7 @@ contract LendingPool is Ownable {
         address asset,
         uint256 borrowQuantity,
         bytes memory params
-    ) public {
+    ) public returns (bool) {
         // fail early
         // require(optionPool.isBPool())
         // initiates a lending agreement between the LendingPool and a party
@@ -100,6 +100,7 @@ contract LendingPool is Ownable {
         //console.logBool(success);
         //require(success, "ERR_CALLING_FAILED");
         emit Borrowed(msg.sender, borrower, asset, borrowQuantity);
+        return true;
     }
 
     function depositCollateral(
