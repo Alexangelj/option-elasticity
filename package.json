@@ -8,7 +8,8 @@
         "test:local": "cross-env buidler test --network local",
         "compile": "cross-env buidler compile",
         "lint": "cross-env buidler check",
-        "bevm": "cross-env buidler node"
+        "bevm": "cross-env buidler node",
+        "testrpc": "ganache-cli --deterministic --gasLimit 10000000"
     },
     "repository": "https://github.com/Alexangelj/option-elasticity.git",
     "author": "alex.ander.eth",

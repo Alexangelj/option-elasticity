@@ -294,4 +294,13 @@ library Pricing {
         riskyW = riskyW.mul(uint256(10**18).div(MANTISSA));
         riskFW = riskFW.mul(uint256(10**18).div(MANTISSA));
     }
+
+    function weights(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (uint256 riskyW, uint256 riskFW) {
+        (riskyW, riskFW) = getWeights(s, k, o, t);
+    }
 }

@@ -16,10 +16,18 @@ interface ILendingPool {
         uint256 borrowQuantity,
         bytes calldata params
     ) external returns (bool);
+    /* function depositCollateral(
+        address from,
+        address to,
+        address asset,
+        uint256 enterQuantity
+    ) external returns (bool); */
     function depositCollateral(
         address from,
         address to,
         address asset,
+        address borrowedAsset,
+        uint debt,
         uint256 enterQuantity
     ) external returns (bool);
 }

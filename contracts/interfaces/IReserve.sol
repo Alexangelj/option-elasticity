@@ -18,4 +18,6 @@ interface IReserve {
         address asset,
         uint256 borrowQuantity
     ) external;
+
+    function updateStateWithBorrow(address to, address asset, uint quantity) external returns (bool);
 }

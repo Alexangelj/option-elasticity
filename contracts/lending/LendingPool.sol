@@ -106,6 +106,8 @@ contract LendingPool is Ownable, ReentrancyGuard {
         address from,
         address to,
         address asset,
+        address borrowedAsset,
+        uint debt,
         uint256 enterQuantity
     ) public returns (bool) {
         // adds liquidity to a pool of reserve asset and receives liquidity shares
@@ -117,6 +119,7 @@ contract LendingPool is Ownable, ReentrancyGuard {
             asset,
             enterQuantity
         );
+        (bool isCollateralized) = reserve.updateStateWithBorrow(to, borrowedAsset, debt);
         // reserve returns amount that was deposited
         // emits event
         emit EnterLendingPool(to, asset, depositQuantity);

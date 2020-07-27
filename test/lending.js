@@ -136,11 +136,14 @@ describe("Reserve/Lending Contract", () => {
                     let name = array[i][0];
                     let account = array[i][1];
                     let bal = await iPool.balanceOf(account);
-                    console.log(name, formatEther(bal));
+                    console.log(name, await iPool.symbol(), formatEther(bal));
                 }
             }
 
             await getDebtBalances(debtArray);
+
+            let borrowed = await reserve.getBorrowBalance(Alice, ether.address);
+            console.log(formatEther(borrowed));
         });
     });
 });

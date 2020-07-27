@@ -103,6 +103,18 @@ contract Reserve is Ownable {
         return (true, actualDebtBalance);
     }
 
+    function updateStateWithBorrow(address to, address asset, uint quantity) external returns (bool) {
+        ReserveData storage reserve = _reserves[asset];
+
+        reserve.borrowBalances[to] = reserve.borrowBalances[to].add(quantity);
+        return true;
+    }
+
+    function getBorrowBalance(address account, address asset) public view returns (uint) {
+        ReserveData storage reserve = _reserves[asset];
+        return reserve.borrowBalances[account];
+    }
+
     function borrow(
         address borrower,
         address asset,

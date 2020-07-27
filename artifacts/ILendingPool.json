@@ -61,6 +61,16 @@
           "type": "address"
         },
         {
+          "internalType": "address",
+          "name": "borrowedAsset",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "debt",
+          "type": "uint256"
+        },
+        {
           "internalType": "uint256",
           "name": "enterQuantity",
           "type": "uint256"

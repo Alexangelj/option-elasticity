@@ -41,6 +41,7 @@ const setupMultipleContracts = async (arrayOfContractNames) => {
         let contract = await factory.deploy();
         contracts.push(contract);
     }
+    console.log("Set up all contracts!");
     return contracts;
 };
 
@@ -62,15 +63,19 @@ const batchApproval = async (arrayOfContractsToApprove, arrayOfTokens, arrayOfOw
 };
 
 const setupLendingProtocol = async (lendingPool, reserve, trader) => {
-    await lendingPool.initialize(reserve.address);
-    await reserve.initialize(lendingPool.address);
-    await trader.initialize(lendingPool.address);
+    try {
+        await lendingPool.initialize(reserve.address);
+        await reserve.initialize(lendingPool.address);
+        await trader.initialize(lendingPool.address);
+    } catch(error) {
+        console.log(error);
+    }
 };
 
 const setupOptionProtocol = async (signer) => {
     // deploys the library
     let templateLib = await deployContract(signer, BPoolTemplateLib, [], {
-        gasLimit: 9000000,
+        gasLimit: 9500000,
     });
 
     // formats the bytecode so the link() function will work
@@ -146,7 +151,7 @@ const calibratePool = async (
 };
 
 const calculateWeights = async (pricingLibrary, spot, strike, volatility, timeUntilExpiry) => {
-    let weights = await pricingLibrary.getWeights(spot, strike, volatility, timeUntilExpiry);
+    let weights = await pricingLibrary.weights(spot, strike, volatility, timeUntilExpiry);
     return weights;
 };
 

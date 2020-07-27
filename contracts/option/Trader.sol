@@ -162,7 +162,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         uint256 payment
     ) public returns (bool) {
         uint256 poolAmountOut = _enterPool(IBPool(optionPool), token, input).add(payment);
-        return _depositCollateral(buyer, optionPool, poolAmountOut);
+        return _depositCollateral(buyer, input, token, optionPool, poolAmountOut);
 
     }
 
@@ -176,7 +176,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         require(poolAmountOut >= minOutput && poolAmountOut > 0, "ERR_INSUFFICIENT_LP");
     }
 
-    function _depositCollateral(address buyer, address optionPoolAddress, uint256 poolAmountOut)
+    function _depositCollateral(address buyer, uint debt, address borrowedToken, address optionPoolAddress, uint256 poolAmountOut)
         internal
         returns (bool)
     {
@@ -189,6 +189,8 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
                 address(this),
                 buyer,
                 optionPoolAddress,
+                borrowedToken,
+                debt,
                 poolAmountOut
             ),
             "ERR_DEPOSITING_COLLATERAL"
@@ -237,79 +239,4 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         );
         return lendingPool.borrow(optionPool, address(this), token, amount, params);
     } */
-
-    function calculatePoolAmountOut(
-        IBPool optionPool,
-        address token,
-        uint256 amount
-    ) public returns (uint256 poolAmountOut) {
-        // get tokens
-        address[] memory tokens = optionPool.getFinalTokens();
-        // fail early
-        require(tokens[0] == token || tokens[1] == token, "ERR_INVALID_TOKEN");
-        poolAmountOut = calculateProportion(
-            amount,
-            optionPool.totalSupply(),
-            optionPool.getBalance(token)
-        );
-    }
-
-    function calculateProportion(
-        uint256 amount,
-        uint256 totalSupply,
-        uint256 balance
-    ) public returns (uint256) {
-        uint256 out = amount.mul(totalSupply).div(balance);
-        out = out.sub(out.div((10**18 / 10**6)));
-        return out;
-    }
-
-    function calculatePoolAmountsOut(IBPool optionPool, uint256[] memory amounts)
-        public
-        returns (uint256 poolAmountOut)
-    {
-        uint256 totalSupply = optionPool.totalSupply();
-
-        // get amounts and tokens
-        uint256 underlyingAmount = amounts[0];
-        uint256 quoteAmount = amounts[1];
-        address[] memory tokens = optionPool.getFinalTokens();
-        address underlyingToken = tokens[0];
-        address quoteToken = tokens[1];
-        uint256 underlyingBalance = optionPool.getBalance(underlyingToken);
-        uint256 quoteBalance = optionPool.getBalance(quoteToken);
-
-        // user token balance * total supply / pool token balance = pool amount out
-        poolAmountOut = underlyingAmount.mul(totalSupply).div(underlyingBalance);
-        poolAmountOut = poolAmountOut.add(quoteAmount.mul(totalSupply).div(quoteBalance)).sub(
-            uint256(1)
-        );
-    }
-
-    function borrowHook(
-        IBPool optionPool,
-        address underlyingToken,
-        address quoteToken,
-        uint256 underlyingQuantity,
-        uint256 quoteQuantity
-    ) public {
-        // deposit liquidity to pool
-        uint256 poolAmountOut = optionPool.joinswapExternAmountIn(
-            underlyingToken,
-            underlyingQuantity,
-            uint256(0)
-        );
-        poolAmountOut = poolAmountOut.add(
-            optionPool.joinswapExternAmountIn(quoteToken, quoteQuantity, uint256(0))
-        );
-        // send lp share to lending pool as collateral
-        // transfer pool shares out
-        lendingPool.depositCollateral(
-            address(this),
-            msg.sender,
-            address(optionPool),
-            poolAmountOut
-        );
-        // mint some tokenized form of receipt for purchasing the option
-    }
 }
