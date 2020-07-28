@@ -11,6 +11,11 @@
         },
         {
           "internalType": "address",
+          "name": "receiver",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
           "name": "asset",
           "type": "address"
         },

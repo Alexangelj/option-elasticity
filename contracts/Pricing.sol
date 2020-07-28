@@ -4,15 +4,15 @@ import { ABDKMath64x64 } from "./libraries/ABDKMath64x64.sol";
 import { SafeMath } from "./libraries/SafeMath.sol";
 
 library Pricing {
-    using ABDKMath64x64 for *;
+    using ABDKMath64x64 for *; // stores numerators as int128, denominator is 2^64.
     using SafeMath for uint256;
 
-    uint256 internal constant YEAR = 31449600;
+    uint256 internal constant YEAR = 31449600; // 1 year in seconds
     uint256 internal constant MANTISSA = 10**8;
-    uint256 internal constant DENOMINATOR = 10**18;
+    uint256 internal constant DENOMINATOR = 10**18; // wei
     uint256 internal constant PERCENTAGE = 10**3;
 
-    //constructor() internal {}
+    // Black-Scholes Approximation for ATM options ONLY.
 
     /**
      * @dev Calculate the ATM option price. 0.4 * S * sigma * sqrt(T-t).
@@ -26,37 +26,21 @@ library Pricing {
         uint256 t
     ) internal pure returns (uint256 atm) {
         int128 spot = fromWeiToInt128(s);
-        atm = ABDKMath64x64.toUInt(
-            int128(2)
-                .div(int128(5))
-                .mul(spot)
-                .mul(ABDKMath64x64.fromUInt(o))
-                .div(ABDKMath64x64.fromUInt(PERCENTAGE))
-                .mul(sqrt(ABDKMath64x64.fromUInt(t).div(ABDKMath64x64.fromUInt(YEAR))))
-        );
+        atm = (
+            int128(2).div(int128(5)).mul(spot).mul(o.fromUInt()).div(PERCENTAGE.fromUInt()).mul(
+                (t.fromUInt().div(YEAR.fromUInt())).sqrt()
+            )
+        )
+            .toUInt();
     }
 
-    function fromWeiToInt128(uint256 x) internal pure returns (int128) {
-        return x.divu(DENOMINATOR);
-    }
-
-    function percentageInt128(uint256 p) internal pure returns (int128) {
-        int128 num = ABDKMath64x64.fromUInt(p);
-        int128 denom = ABDKMath64x64.fromUInt(PERCENTAGE);
-        return num.div(denom);
-    }
-
-    function secondsToYears(uint256 s) internal pure returns (int128) {
-        int128 time = ABDKMath64x64.fromUInt(s);
-        int128 units = ABDKMath64x64.fromUInt(YEAR);
-        return time.div(units);
-    }
+    // Black-Scholes functions.
 
     /**
      * @dev Calculate the d1 auxiliary variable.
-     * @notice ( log(s/k) + (o^2/2)*(T-t) ) / o * sqrt(T-t).
-     * @param s Spot price of underlying token in USD/DAI/USDC.
-     * @param k Strike price in USD/DAI/USDC.
+     * @notice ( ln(s/k) + (o^2/2)*(T-t) ) / o * sqrt(T-t).
+     * @param s Spot price of underlying token in USD/DAI/USDC. In wei.
+     * @param k Strike price in USD/DAI/USDC. In wei.
      * @param o "volatility" scaled by 1000.
      * @param t Time until expiration in seconds.
      */
@@ -66,34 +50,36 @@ library Pricing {
         uint256 o,
         uint256 t
     ) internal pure returns (int128 d1) {
-        int128 moneyness = getMoneyness(s, k);
-        // (r + sigma^2 / 2)
+        // ln( F / K )
+        int128 moneyness = logSimpleMoneyness(s, k);
+        // (r + volatility^2 / 2), r = 0 for simplicity. This should be fixed.
         int128 vol = (percentageInt128(o).pow(2)).div(ABDKMath64x64.fromUInt(2));
-        // seconds / seconds in a year = years
+        // ( T - t ) time until expiry. seconds / seconds in a year = years
         int128 time = secondsToYears(t);
-        // log( s / k) + (r + sigma^2 / 2) * (T - t)
-        int128 num = moneyness.add(vol.mul(time));
-        // sigma * sqrt(T - t)
-        int128 dom = percentageInt128(o).mul(sqrt(secondsToYears(t)));
-        d1 = num.div(dom);
+        // ln( F / K ) + (r + volatility^2 / 2) * (T - t)
+        int128 numerator = moneyness.add(vol.mul(time));
+        // volatility * sqrt(T - t)
+        int128 denominator = percentageInt128(o).mul((secondsToYears(t)).sqrt());
+        d1 = numerator.div(denominator);
     }
 
-    function getMoneyness(uint256 s, uint256 k) internal pure returns (int128 moneyness) {
+    /**
+     * @dev Calculates the log simple moneyness.
+     * @notice ln(F / K).
+     * @param s Spot price of underlying token in USD/DAI/USDC. In wei.
+     * @param k Strike price in USD/DAI/USDC. In wei.
+     */
+    function logSimpleMoneyness(uint256 s, uint256 k) internal pure returns (int128 moneyness) {
         int128 spot = fromWeiToInt128(s);
         int128 strike = fromWeiToInt128(k);
-        // log( s / k)
-        moneyness = ABDKMath64x64.log_2(spot.div(strike));
-    }
-
-    function sqrt(int128 x) internal pure returns (int128) {
-        return ABDKMath64x64.sqrt(x);
+        moneyness = (spot.div(strike)).ln();
     }
 
     /**
      * @dev Calculate the d2 auxiliary variable.
-     * @notice d1 - o*sqrt(T-t).
-     * @param s Spot price of underlying token in USD/DAI/USDC.
-     * @param k Strike price in USD/DAI/USDC.
+     * @notice d1 - volatility*sqrt(T-t).
+     * @param s Spot price of underlying token in USD/DAI/USDC. In wei.
+     * @param k Strike price in USD/DAI/USDC. In wei.
      * @param o "volatility" scaled by 1000.
      * @param t Time until expiration in seconds.
      */
@@ -103,42 +89,97 @@ library Pricing {
         uint256 o,
         uint256 t
     ) internal pure returns (int128 d2) {
+        // d1 = ( ln(s/k) + (o^2/2)*(T-t) ) / o * sqrt(T-t).
         int128 d1 = auxiliary(s, k, o, t);
-        d2 = d1.sub(percentageInt128(o).mul(sqrt(secondsToYears(t))));
+        // d2 = d1 - volatility*sqrt(T-t).
+        d2 = d1.sub(percentageInt128(o).mul((secondsToYears(t)).sqrt()));
     }
 
+    /**
+        @title Approximations to Standard Normal Distribution Function
+        @author Ramu Yerukala and Naveen Kumar Boiroju
+        International Journal of Scientific & Engineering Research, Volume 6, Issue 4, April-2015 515 ISSN 2229-5518
+        @notice We use an approximation for the standard normal distribution function (CDF21) as follows: 
+                       exp( -z ^ 2 / 2)
+        1 - ( ----------------------------------- )
+              44     8         5     
+             ---- + --- * z + --- * sqrt( z^2 +3 )
+              79     5         6
+     */
+
+    /**
+     * @dev Calculates the numerator for the CDF.
+     * @notice e ^ (-z ^ 2 / 2)
+     */
     function ndnumerator(int128 z) internal pure returns (int128 numerator) {
-        numerator = ABDKMath64x64.exp((z.neg()).pow(2).div(ABDKMath64x64.fromUInt(2)));
+        numerator = ((z.neg()).pow(2).div((2).fromUInt())).exp();
     }
 
+    /**
+     * @dev Calculates the first element for the denominator of CDF21.
+     * @notice 
+            44
+           ----
+            79
+     */
     function cdfA() internal pure returns (int128) {
-        return ABDKMath64x64.fromUInt(44).div(ABDKMath64x64.fromUInt(79));
+        return (44).fromUInt().div((79).fromUInt());
     }
 
+    /**
+     * @dev Calculates the second element for the denominator of CDF21.
+     * @notice 
+            8
+           --- * z
+            5
+     */
     function cdfB(int128 z) internal pure returns (int128) {
-        return z.mul(ABDKMath64x64.fromUInt(8)).div(ABDKMath64x64.fromUInt(5));
+        return z.mul((8).fromUInt()).div((5).fromUInt());
     }
 
+    /**
+     * @dev Calculates the first element for the third element of the denominator of CDF21.
+     * @notice ( z ^ 2 ).
+     */
     function cdfC0(int128 z) internal pure returns (int128) {
         return z.pow(2);
     }
 
+    /**
+     * @dev Calculates the items for the third element for the denominator of CDF21.
+     * @notice ( z^2 + 3 ).
+     */
     function cdfC01(int128 z) internal pure returns (int128) {
-        return cdfC0(z).add(ABDKMath64x64.fromUInt(3));
+        return cdfC0(z).add((3).fromUInt());
     }
 
+    /**
+     * @dev Calculates the full element for the third element for the denominator of CDF21.
+     * @notice sqrt( z^2 + 3 ).
+     */
     function cdfC1(int128 z) internal pure returns (int128) {
-        return sqrt(cdfC01(z));
+        return (cdfC01(z)).sqrt();
     }
 
+    /**
+     * @dev Calculates the second element's first item for the denominator of the CDF21.
+     * @notice ( 5 / 6).
+     */
     function cdfC2() internal pure returns (int128) {
         return int128(5).div(int128(6));
     }
 
+    /**
+     * @dev Calculates the second element for the denominator of the CDF21.
+     * @notice ( z * ( 5 / 6) ).
+     */
     function cdfC(int128 z) internal pure returns (int128) {
         return cdfC1(z).mul(cdfC2());
     }
 
+    /**
+     * @dev Calculates the full denominator of the CDF21.
+     */
     function cdfDenominator(int128 z) internal pure returns (int128 denominator) {
         int128 a = cdfA();
         int128 b = cdfB(z);
@@ -146,56 +187,30 @@ library Pricing {
         denominator = a.add(b).add(c);
     }
 
-    function nddenominator(int128 z) internal pure returns (int128 denominator) {
-        //z = z.div(ABDKMath64x64.fromUInt(MANTISSA));
-        int128 a = int128(44).div(int128(79));
-        int128 b = int128(8).div(int128(5)).mul(z);
-        int128 c = (z.pow(2)).add(int128(3));
-        int128 d = sqrt(c);
-        int128 e = d.mul(int128(5)).div(int128(6));
-        //denominator = a.add(b).add(e);
-        denominator = int128(17).div(int128(10));
-    }
-
-    /* function normdist(int128 z) internal pure returns (int128 n) {
-        int128 numerator = ABDKMath64x64.exp(
-                            int128(-1).mul(
-                            (z).pow(2)
-                            .div(int128(2))
-                            ));
-        int128 denominator = (int128(44).div(int128(79)))
-                        .add(int128(8).div(int128(5)).mul(z))
-                        .add(int128(5).div(int128(6)).mul(
-                            sqrt(
-                                (z).pow(2).add(int128(3))
-                                )
-                            )
-                        );
-        n = ABDKMath64x64.fromUInt(MANTISSA).sub(numerator.mul(ABDKMath64x64.fromUInt(MANTISSA)).div(denominator));
-    } */
-
-    /* function normdist(int128 z) internal pure returns (int128 n) {
-        int128 numerator = ndnumerator(z);
-        int128 denominator = nddenominator(z);
-        n = numerator.div(denominator);
-    } */
-
+    /**
+     * @dev Calculates the normal distribution using an approximation.
+     */
     function normdist(int128 z) internal pure returns (int128 n) {
         int128 numerator = ndnumerator(z);
         int128 denominator = cdfDenominator(z);
-        n = ABDKMath64x64.fromUInt(1).sub(numerator.div(denominator));
+        n = (1).fromUInt().sub(numerator.div(denominator));
     }
 
-    function square(uint256 x) internal pure returns (uint256 sq) {
-        sq = ABDKMath64x64.toUInt(ABDKMath64x64.fromUInt(x).pow(2));
-    }
-
-    function bs(
+    /**
+     * @dev Calculates a call option value using black-scholes.
+     * @notice C(s, t) = s * N(d1) - Ke^-r(T - t) * N(d2). Where N() is the standard normal CDF.
+     * @param s Spot price of underlying token in USD/DAI/USDC. In wei.
+     * @param k Strike price in USD/DAI/USDC. In wei.
+     * @param o "volatility" scaled by 1000.
+     * @param t Time until expiration in seconds.
+     * @return c The value of the call option for the contract's parameters.
+     */
+    function call(
         uint256 s,
         uint256 k,
         uint256 o,
         uint256 t
-    ) internal pure returns (int128 p) {
+    ) internal pure returns (int128 c) {
         int128 spot = fromWeiToInt128(s);
         int128 strike = fromWeiToInt128(k);
         int128 d1 = auxiliary(s, k, o, t);
@@ -205,10 +220,18 @@ library Pricing {
         int128 bs = spot.mul(nd1) > strike.mul(nd2)
             ? spot.mul(nd1).sub(strike.mul(nd2))
             : int128(0);
-        //p = ABDKMath64x64.toUInt(bs.mul(ABDKMath64x64.fromUInt(MANTISSA)));
-        p = bs;
+        c = bs;
     }
 
+    /**
+     * @dev Calculates a put option value using black-scholes.
+     * @notice P(s, t) = Ke^-r(T - t) * N(-d2) - s * N(-d1). Where N() is the standard normal CDF.
+     * @param s Spot price of underlying token in USD/DAI/USDC. In wei.
+     * @param k Strike price in USD/DAI/USDC. In wei.
+     * @param o "volatility" scaled by 1000.
+     * @param t Time until expiration in seconds.
+     * @return p The value of the put option for the contract's parameters.
+     */
     function put(
         uint256 s,
         uint256 k,
@@ -219,27 +242,20 @@ library Pricing {
         int128 strike = fromWeiToInt128(k);
         int128 d1 = auxiliary(s, k, o, t);
         int128 d2 = auxiliary2(s, k, o, t);
-        int128 nd1 = normdist(neg(d1));
-        int128 nd2 = normdist(neg(d2));
+        int128 nd1 = normdist((d1).neg());
+        int128 nd2 = normdist((d2).neg());
         int128 bs = strike.mul(nd2) > spot.mul(nd1)
             ? strike.mul(nd2).sub(spot.mul(nd1))
             : int128(0);
         p = bs;
     }
 
-    function neg(int128 x) internal pure returns (int128 n) {
-        n = ABDKMath64x64.neg(x);
-    }
+    // Elasticity and greek functions.
 
-    function _fromInt(int128 x) internal pure returns (uint256 y) {
-        x = x.mul(ABDKMath64x64.fromUInt(MANTISSA));
-        y = x > 0 ? ABDKMath64x64.toUInt(x) : uint256(0);
-    }
-
-    function to128(int128 x) internal pure returns (int256 y) {
-        y = ABDKMath64x64.to128x128(x);
-    }
-
+    /**
+     * @dev Calculates the numerator for the option elasticity function.
+     * @notice  spot * delta. delta = ( 1 - N(d1) ). d1 is negative for puts.
+     */
     function eNumerator(
         uint256 s,
         uint256 k,
@@ -248,10 +264,14 @@ library Pricing {
         int128 d1
     ) internal pure returns (int128 numerator) {
         int128 x = fromWeiToInt128(s);
-        int128 delta = ABDKMath64x64.fromUInt(1).sub(normdist(d1));
+        int128 delta = (1).fromUInt().sub(normdist(d1));
         numerator = x.mul(delta);
     }
 
+    /**
+     * @dev Calculates the denominator for the option elasticity function.
+     * @notice P(s, t) + s
+     */
     function eDenominator(
         uint256 s,
         uint256 k,
@@ -263,6 +283,9 @@ library Pricing {
         denominator = x.add(pxt);
     }
 
+    /**
+     * @dev Calculates the elasticity of an option.
+     */
     function elasticity(
         uint256 s,
         uint256 k,
@@ -275,6 +298,9 @@ library Pricing {
         e = numerator.div(denominator);
     }
 
+    /**
+     * @dev Calculates the elasticity of an option and converts to a denormalized weight in wei.
+     */
     function getWeights(
         uint256 s,
         uint256 k,
@@ -295,6 +321,9 @@ library Pricing {
         riskFW = riskFW.mul(uint256(10**18).div(MANTISSA));
     }
 
+    /**
+     * @dev Library entry point for easy testing.
+     */
     function weights(
         uint256 s,
         uint256 k,
@@ -302,5 +331,42 @@ library Pricing {
         uint256 t
     ) public pure returns (uint256 riskyW, uint256 riskFW) {
         (riskyW, riskFW) = getWeights(s, k, o, t);
+    }
+
+    // Conversion functions.
+
+    /**
+     * @dev Converts a wei value uint256 into an int128 numerator value.
+     * @param x A uint256 amount.
+     */
+    function fromWeiToInt128(uint256 x) internal pure returns (int128) {
+        return x.divu(DENOMINATOR);
+    }
+
+    /**
+     * @dev Converts a denormalized percentage (1000 = 100%, 10 = 1%) into an int128.
+     */
+    function percentageInt128(uint256 denorm) internal pure returns (int128) {
+        int128 numerator = denorm.fromUInt();
+        int128 denominator = PERCENTAGE.fromUInt();
+        return numerator.div(denominator);
+    }
+
+    /**
+     * @dev Converts second units into an int128 with units of years.
+     */
+    function secondsToYears(uint256 quantitySeconds) internal pure returns (int128) {
+        int128 time = quantitySeconds.fromUInt();
+        int128 units = YEAR.fromUInt();
+        return time.div(units);
+    }
+
+    /**
+     * @dev Converts a numerator x with denominator 2^64 into an uint256.
+     * @notice Will return 0 if a fraction < 10^8.
+     */
+    function _fromInt(int128 x) internal pure returns (uint256 y) {
+        x = x.mul((MANTISSA).fromUInt());
+        y = x > 0 ? (x).toUInt() : uint256(0);
     }
 }

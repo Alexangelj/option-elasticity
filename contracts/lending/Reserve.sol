@@ -27,7 +27,7 @@ contract Reserve is Ownable {
         mapping(address => uint256) collateralBalances;
         mapping(address => uint256) feeBalances;
         uint256 totalAssetBalance;
-        bool isBorrowingEnabled;
+        bool isBorrowingDisabled;
         bool isActive;
         bool isFrozen;
     }
@@ -103,13 +103,6 @@ contract Reserve is Ownable {
         return (true, actualDebtBalance);
     }
 
-    function updateStateWithBorrow(address to, address asset, uint quantity) external returns (bool) {
-        ReserveData storage reserve = _reserves[asset];
-
-        reserve.borrowBalances[to] = reserve.borrowBalances[to].add(quantity);
-        return true;
-    }
-
     function getBorrowBalance(address account, address asset) public view returns (uint) {
         ReserveData storage reserve = _reserves[asset];
         return reserve.borrowBalances[account];
@@ -117,12 +110,19 @@ contract Reserve is Ownable {
 
     function borrow(
         address borrower,
+        address receiver,
         address asset,
         uint256 borrowQuantity
     ) public {
         ReserveData storage reserve = _reserves[asset];
+        // can be borrowed from
+        require(!reserve.isBorrowingDisabled, "ERR_BORROWING_DISABLED");
+        // there is enough assets to borrow
         require(reserve.totalAssetBalance >= borrowQuantity, "ERR_INSUFFICIENT_LIQUIDITY");
-        _transferAsset(asset, borrower, borrowQuantity);
+        // add borrow balance to the borrower
+        reserve.borrowBalances[borrower] = reserve.borrowBalances[borrower].add(borrowQuantity);
+        // transfer the borrowed assets the receiver
+        _transferAsset(asset, receiver, borrowQuantity);
     }
 
     function _transferAsset(

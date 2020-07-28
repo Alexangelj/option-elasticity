@@ -104,29 +104,6 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         return _borrow(position);
     }
 
-    /* function _syntheticPosition(
-        IBPool optionPool,
-        address underlyingToken,
-        address quoteToken,
-        uint256 lotSize,
-        uint256 premium
-    ) internal returns (bool) {
-        // everythings about to get put into a maze, so lets track the original buyer
-        address buyer = msg.sender;
-        // pull the premium for the lot size so we can deposit it into the pool
-        _pull(quoteToken, premium);
-        // calculate the expected amount of lp shares received for the deposit
-        uint256 minOutput = calcExpectedPoolOut(optionPool, quoteToken, premium);
-        // deposit premium denominated in quote token and returns LP share tokens
-        (uint poolAmountOut) = _enterPool(optionPool, quoteToken, premium, minOutput);
-        // check lp shares have been paid for the corresponding lot size
-        require(poolAmountOut >= minOutput, "ERR_INSUFFICIENT_LP");
-        // call borrow, borrowing the underlying asset and paying the lp tokens
-        // borrow 1 unit of risky asset from lending pool and deposit into pool
-        // collateral is lp shares from quote token + lp shares from underlying token deposits
-        return _borrow(optionPool, underlyingToken, lotSize);
-    } */
-
     function calcExpectedPoolOut(IBPool optionPool, address inputToken, uint tokenAmountIn) public view returns (uint poolAmountOut) {
         uint tokenBalanceIn;
         uint tokenWeightIn;
@@ -218,25 +195,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
             position.lotSize,
             position.lpSharePayment
         );
-        return lendingPool.borrow(position.optionPool, address(this), position.underlyingToken, position.lotSize, params);
+        return lendingPool.borrow(position.optionPool, position.buyer, address(this), position.underlyingToken, position.lotSize, params);
     }
 
-    /* function _borrow(
-        IBPool optionPool,
-        address token,
-        uint256 amount
-    ) internal nonReentrant returns (bool) {
-        // should pass in data to deposit and then send lp tokens out
-        bytes4 selector = bytes4(
-            keccak256(bytes("_depositAndCollateralize(address,address,uint256,uint256)"))
-        );
-        bytes memory params = abi.encodeWithSelector(
-            selector,
-            address(optionPool),
-            token,
-            amount,
-            uint256(0)
-        );
-        return lendingPool.borrow(optionPool, address(this), token, amount, params);
-    } */
 }

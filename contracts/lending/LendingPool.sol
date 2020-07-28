@@ -83,9 +83,18 @@ contract LendingPool is Ownable, ReentrancyGuard {
         return success;
     }
 
+    /**
+     * @param optionPool The pool which will return pool shares, which collateralizes the loan.
+     * @param borrower The account that will have a liability credited.
+     * @param receiver The account that will receive the borrowed asset.
+     * @param asset The ERC-20 token that is being borrowed.
+     * @param borrowQuantity The quantity of borrowed ERC-20 tokens in wei.
+     * @param params An encoded piece of data that will be depositing + returning collateral.
+     */
     function borrow(
         IBPool optionPool,
         address borrower,
+        address receiver,
         address asset,
         uint256 borrowQuantity,
         bytes memory params
@@ -93,13 +102,10 @@ contract LendingPool is Ownable, ReentrancyGuard {
         // fail early
         // require(optionPool.isBPool())
         // initiates a lending agreement between the LendingPool and a party
-        reserve.borrow(borrower, asset, borrowQuantity);
+        reserve.borrow(borrower, receiver, asset, borrowQuantity);
         ISecuredLoanReceiver caller = ISecuredLoanReceiver(msg.sender);
         emit Borrowed(msg.sender, borrower, asset, borrowQuantity);
         return caller.secureLoan(optionPool, borrowQuantity, uint256(0), params);
-        //(bool success, bytes memory data) = msg.sender.call(params);
-        //console.logBool(success);
-        //require(success, "ERR_CALLING_FAILED");
     }
 
     function depositCollateral(
@@ -119,7 +125,6 @@ contract LendingPool is Ownable, ReentrancyGuard {
             asset,
             enterQuantity
         );
-        (bool isCollateralized) = reserve.updateStateWithBorrow(to, borrowedAsset, debt);
         // reserve returns amount that was deposited
         // emits event
         emit EnterLendingPool(to, asset, depositQuantity);

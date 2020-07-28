@@ -15,6 +15,7 @@ interface IReserve {
 
     function borrow(
         address borrower,
+        address receiver,
         address asset,
         uint256 borrowQuantity
     ) external;
