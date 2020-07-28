@@ -22,6 +22,7 @@ module.exports = {
         local: {
             url: "http://127.0.0.1:8545",
             gasPrice: 80000000000,
+            gas: 10000000,
             timeout: 1000000,
         },
     },
@@ -34,5 +35,9 @@ module.exports = {
     // This is a sample solc configuration that specifies which version of solc to use
     solc: {
         version: "0.5.12",
+        optimizer: {
+            enabled: true,
+            runs: 100,
+        },
     },
 };

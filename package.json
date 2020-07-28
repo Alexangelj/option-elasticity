@@ -1,11 +1,15 @@
 {
-    "name": "option-elasticity",
+    "name": "@primitivefi/math",
     "version": "0.1.0",
     "description": "testing option stuff",
     "main": "index.js",
     "scripts": {
         "test": "cross-env buidler test",
-        "test:local": "cross-env buidler test --network local"
+        "test:local": "cross-env buidler test --network local",
+        "compile": "cross-env buidler compile",
+        "lint": "cross-env buidler check",
+        "bevm": "cross-env buidler node",
+        "testrpc": "ganache-cli --deterministic --gasLimit 10000000"
     },
     "repository": "https://github.com/Alexangelj/option-elasticity.git",
     "author": "alex.ander.eth",

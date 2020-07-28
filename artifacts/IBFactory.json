@@ -1,0 +1,30 @@
+{
+  "contractName": "IBFactory",
+  "abi": [
+    {
+      "constant": false,
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "extraSalt",
+          "type": "uint256"
+        }
+      ],
+      "name": "newBPool",
+      "outputs": [
+        {
+          "internalType": "contract IBPool",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "payable": false,
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

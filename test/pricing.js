@@ -56,11 +56,6 @@ describe("Pricing Contract", () => {
             console.log("ATM", atm.toString());
         });
 
-        it("Tests the sq function", async () => {
-            let sq = await pricing.square(2);
-            console.log("sq", sq.toString());
-        });
-
         it("Tests the ndnumerator function", async () => {
             let d1 = await pricing.auxiliary(s, k, o, t);
             let ndnumerator = await pricing.ndnumerator(d1);
@@ -68,12 +63,12 @@ describe("Pricing Contract", () => {
             console.log("ndnumerator", ndnumerator.toString());
         });
 
-        it("Tests the nddenominator function", async () => {
+        /* it("Tests the nddenominator function", async () => {
             let d1 = await pricing.auxiliary(s, k, o, t);
             let nddenominator = await pricing.nddenominator(d1);
             nddenominator = await pricing._fromInt(nddenominator);
             console.log("nddenominator", nddenominator.toString());
-        });
+        }); */
 
         it("Tests the d1 function", async () => {
             let d1 = await pricing.auxiliary(s, k, o, t);
@@ -102,12 +97,6 @@ describe("Pricing Contract", () => {
             console.log("normdist2", normdist2.toString());
         });
 
-        it("Tests the bs function", async () => {
-            let bs = await pricing.bs(s, k, o, t);
-            bs = await pricing._fromInt(bs);
-            console.log("bs", bs.toString());
-        });
-
         it("Tests the put function", async () => {
             let put = await pricing.put(s, k, o, t);
             put = await pricing._fromInt(put);
@@ -121,7 +110,7 @@ describe("Pricing Contract", () => {
             console.log("neg", neg.toString());
         });
 
-        it("Tests it all!", async () => {
+        /* it("Tests it all!", async () => {
             // calculate
             let moneyness = await pricing.getMoneyness(s, k);
             let d1 = await pricing.neg(await pricing.auxiliary(s, k, o, t));
@@ -177,7 +166,7 @@ describe("Pricing Contract", () => {
             console.log("cdfC01", cdfC01.toString());
             console.log("cdfC1", cdfC1.toString());
             console.log("cdfC2", cdfC2.toString());
-        });
+        }); */
 
         it("Tests it all! 2", async () => {
             // calculate

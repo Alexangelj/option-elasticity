@@ -1,4 +1,4 @@
-pragma solidity >=0.5.2 <=0.6.2;
+pragma solidity >=0.5.12 <=0.6.2;
 
 import { ERC20, IERC20 } from "./ERC20.sol";
 
