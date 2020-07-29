@@ -7,7 +7,7 @@ import { IERC20 } from "./tokens/ERC20.sol";
 import { SafeMath } from "./libraries/SafeMath.sol";
 import "@nomiclabs/buidler/console.sol";
 
-contract PFactory /* is Pricing */ {
+contract PFactory {
     using SafeMath for uint;
     IBFactory public bFactory;
     IBPool public bPool;

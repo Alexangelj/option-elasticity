@@ -1,6 +1,6 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
-interface AggregatorInterface {
+interface IAggregator {
     function latestAnswer() external view returns (int256);
 
     function latestTimestamp() external view returns (uint256);
