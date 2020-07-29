@@ -31,6 +31,10 @@ contract PFactory {
         bPool = pool;
     }
 
+    function setController(address newController) public {
+        bPool.setController(newController);
+    }
+
     function finalizePool(address poolAddress) public {
         IBPool(poolAddress).finalize();
     }

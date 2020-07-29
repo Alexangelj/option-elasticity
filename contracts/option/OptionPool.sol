@@ -45,8 +45,14 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         uint expiry;
     }
 
+    struct Assets {
+        address underlyingToken;
+        address quoteToken;
+    }
+
     Controllers public controllers;
     Parameters public parameters;
+    Assets public assets;
 
     // Modifiers
 
@@ -67,6 +73,8 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         string calldata name_,
         string calldata symbol_,
         uint initialSupply,
+        address underlyingToken_,
+        address quoteToken_,
         uint spot_,
         uint strike_,
         uint vol_,
@@ -83,10 +91,15 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         parameters.vol = vol_;
         parameters.expiry = expiry_;
         }
+        {
+        assets.underlyingToken = underlyingToken_;
+        assets.quoteToken = quoteToken_;
+        }
         _setupName(name_);
         _setupSymbol(symbol_);
         _mintPoolShare(initialSupply);
         _pushPoolShare(msg.sender, initialSupply);
+        _initializeWeights();
     }
 
     // Controller functions
@@ -115,11 +128,21 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         riskFreeAmount = riskFreePrice.mul(riskFreeWeight).div(1 ether);
     }
 
+    function _initializeWeights() internal {
+        IBPool optionPool_ = optionPool();
+        Parameters memory params = parameters;
+        Assets memory assets_ = assets;
+        (uint256 riskyWeight, uint256 riskFreeWeight) = Pricing.getWeights(params.spot, params.strike, params.vol, params.expiry);
+        (uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyWeight, riskFreeWeight);
+        _bind(assets_.underlyingToken, riskyAmount, riskyWeight.mul(25));
+        _bind(assets_.quoteToken, riskFreeAmount, riskFreeWeight.mul(25)); // bone == 50, 25 == half
+    }
+
     function _updateWeights() internal {
         IBPool optionPool_ = optionPool();
         address[] memory tokens = optionPool_.getCurrentTokens();
         Parameters memory params = parameters;
-        (uint256 riskyWeight, uint256 riskFreeWeight) = Pricing.getWeights(params.spot, params.strike, params.vol, params.expiry.sub(block.timestamp));
+        (uint256 riskyWeight, uint256 riskFreeWeight) = Pricing.getWeights(params.spot, params.strike, params.vol, params.expiry);
         (uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyWeight, riskFreeWeight);
         _rebind(address(tokens[0]), riskyAmount, riskyWeight.mul(25));
         _rebind(address(tokens[1]), riskFreeAmount, riskFreeWeight.mul(25)); // bone == 50, 25 == half
@@ -301,11 +324,32 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         return optionPool().getDenormalizedWeight(token_);
     }
 
-    function isPublicSwap() external view returns(bool) {
-        return optionPool().isPublicSwap();
+    function getTotalDenormalizedWeight() external view returns (uint) {
+        return optionPool().getTotalDenormalizedWeight();
     }
 
-    function getSwapFee() external view returns(bool) {
+    function getCurrentTokens() external view returns (address[] memory) {
+        return optionPool().getCurrentTokens();
+    }
+
+    function getBalance(address token) external view returns(uint) {
+        return optionPool().getBalance(token);
+    }
+
+    function calcPoolOutGivenSingleIn(uint tokenBalanceIn,
+        uint tokenWeightIn,
+        uint poolSupply,
+        uint totalWeight,
+        uint tokenAmountIn,
+        uint swapFee) external view returns (uint) {
+        return optionPool().calcPoolOutGivenSingleIn(tokenBalanceIn, tokenWeightIn, poolSupply, totalWeight, tokenAmountIn, swapFee);
+    }
+
+    /* function isPublicSwap() external view returns(bool) {
+        return optionPool().isPublicSwap();
+    } */
+
+    function getSwapFee() external view returns(uint) {
         return optionPool().getSwapFee();
     }
 
