@@ -23,7 +23,7 @@ contract PoolToken is Context, IERC20 {
     string public symbol;
     uint8 public constant decimals = 18;
 
-    function _setupName(string memory name) internal {
+    function _setupName(string memory name_) internal {
         name = name_;
     }
 
@@ -189,7 +189,7 @@ contract PoolToken is Context, IERC20 {
 
         _beforeTokenTransfer(address(0), account, amount);
 
-        _totalSupply = _totalSupply.add(amount);
+        totalSupply = totalSupply.add(amount);
         _balances[account] = _balances[account].add(amount);
         emit Transfer(address(0), account, amount);
     }
@@ -211,7 +211,7 @@ contract PoolToken is Context, IERC20 {
         _beforeTokenTransfer(account, address(0), amount);
 
         _balances[account] = _balances[account].sub(amount, "ERC20: burn amount exceeds balance");
-        _totalSupply = _totalSupply.sub(amount);
+        totalSupply = totalSupply.sub(amount);
         emit Transfer(account, address(0), amount);
     }
 
