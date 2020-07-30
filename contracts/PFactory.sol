@@ -8,7 +8,7 @@ import { SafeMath } from "./libraries/SafeMath.sol";
 import "@nomiclabs/buidler/console.sol";
 
 contract PFactory {
-    using SafeMath for uint;
+    using SafeMath for uint256;
     IBFactory public bFactory;
     IBPool public bPool;
     IERC20 public risky;

@@ -24,7 +24,7 @@ const {
     calibratePool,
     getMultipleBalances,
     setupDebtToken,
-    getStateOfPool
+    getStateOfPool,
 } = require("./setup.js");
 
 const ethers = bre.ethers;
@@ -56,7 +56,7 @@ describe("OptionPool.sol", () => {
         [pricing, primitiveFactory, priceProvider] = await setupMultipleContracts([
             "Pricing",
             "PFactory",
-            "ProxyPriceProvider"
+            "ProxyPriceProvider",
         ]);
 
         // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
@@ -67,9 +67,17 @@ describe("OptionPool.sol", () => {
 
         // get the actual Bpool factory
         poolFactory = await setupOptionProtocol(Admin);
+        await priceProvider.setTestPrice(parseEther("105"));
 
         // get the first pool that was deployed
-        pool = await setupOptionPool(primitiveFactory, priceProvider, poolFactory, ether, dai, Admin);
+        pool = await setupOptionPool(
+            primitiveFactory,
+            priceProvider,
+            poolFactory,
+            ether,
+            dai,
+            Admin
+        );
 
         // approve tokens
         let contractsToApprove = [primitiveFactory];
@@ -87,6 +95,13 @@ describe("OptionPool.sol", () => {
     describe("joinPool", () => {
         it("should join the pool", async () => {
             let state = await getStateOfPool(pool, pricing, Alice);
+            console.log(state);
+            await pool.joinPool(parseEther("1"), [parseEther("10000"), parseEther("100000")]);
+            state = await getStateOfPool(pool, pricing, Alice);
+            console.log(state);
+
+            await priceProvider.setTestPrice(parseEther("103"));
+            state = await getStateOfPool(pool, pricing, Alice);
             console.log(state);
             await pool.joinPool(parseEther("1"), [parseEther("10000"), parseEther("100000")]);
             state = await getStateOfPool(pool, pricing, Alice);

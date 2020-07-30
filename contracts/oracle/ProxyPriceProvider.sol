@@ -11,6 +11,8 @@ import { Ownable } from "../utils/Ownable.sol";
 contract ProxyPriceProvider is Ownable {
     address public controller;
 
+    uint256 public testPrice;
+
     mapping(address => IAggregator) private assetPriceProvider;
 
     event AssetPriceProvidersUpdated(address indexed asset, address indexed source);
@@ -51,7 +53,7 @@ contract ProxyPriceProvider is Ownable {
     {
         uint256 assetsLength = assetAddresses.length;
         require(assetsLength == sourceAddresses.length, "ERR_PARAMS_LENGTH");
-        for(uint i =0; i < assetsLength; i++) {
+        for (uint256 i = 0; i < assetsLength; i++) {
             address asset = assetAddresses[i];
             address source = sourceAddresses[i];
             assetPriceProvider[asset] = IAggregator(source);
@@ -62,29 +64,37 @@ contract ProxyPriceProvider is Ownable {
     /**
      * @dev Gets the asset price of an asset address, provided by the mapped source.
      */
-    function getAssetPrice(address assetAddress) public view returns (uint price) {
+    function getAssetPrice(address assetAddress) public view returns (uint256 price) {
         IAggregator source = assetPriceProvider[assetAddress];
-        if(address(source) == address(0x0)) {
-            price = 105 ether;
+        if (address(source) == address(0x0)) {
+            price = testPrice;
         } else {
             int256 providedPrice = source.latestAnswer();
-            if(providedPrice > 0) {
-                price = uint(providedPrice);
+            if (providedPrice > 0) {
+                price = uint256(providedPrice);
             }
         }
     }
 
-    function getAssetVolatility(address assetAddress) public view returns (uint volatility) {
+    function setTestPrice(uint256 testPrice_) external {
+        testPrice = testPrice_;
+    }
+
+    function getAssetVolatility(address assetAddress) public view returns (uint256 volatility) {
         volatility = 100;
     }
 
     /**
      * @dev Gets the prices for an array of addresses.
      */
-    function getAssetPriceList(address[] calldata assetAddresses) external view returns (uint256[] memory prices) {
-        uint assetsLength = assetAddresses.length;
-        prices = new uint[](assetsLength);
-        for (uint i = 0; i < assetsLength; i++) {
+    function getAssetPriceList(address[] calldata assetAddresses)
+        external
+        view
+        returns (uint256[] memory prices)
+    {
+        uint256 assetsLength = assetAddresses.length;
+        prices = new uint256[](assetsLength);
+        for (uint256 i = 0; i < assetsLength; i++) {
             prices[i] = getAssetPrice(assetAddresses[i]);
         }
     }
@@ -92,7 +102,7 @@ contract ProxyPriceProvider is Ownable {
     /**
      * @dev Gets the asset price provider source address.
      */
-    function getAssetSource(address assetAddress) external view returns(address source) {
+    function getAssetSource(address assetAddress) external view returns (address source) {
         source = address(assetPriceProvider[assetAddress]);
     }
 }
