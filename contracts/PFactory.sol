@@ -7,7 +7,7 @@ import { IERC20 } from "./tokens/ERC20.sol";
 import { SafeMath } from "./libraries/SafeMath.sol";
 import "@nomiclabs/buidler/console.sol";
 
-contract PFactory /* is Pricing */ {
+contract PFactory {
     using SafeMath for uint;
     IBFactory public bFactory;
     IBPool public bPool;
@@ -29,6 +29,10 @@ contract PFactory /* is Pricing */ {
     function deployPool() public returns (IBPool pool) {
         pool = bFactory.newBPool(1);
         bPool = pool;
+    }
+
+    function setController(address newController) public {
+        bPool.setController(newController);
     }
 
     function finalizePool(address poolAddress) public {

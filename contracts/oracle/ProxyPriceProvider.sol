@@ -50,9 +50,9 @@ contract ProxyPriceProvider is Ownable {
         internal
     {
         uint256 assetsLength = assetAddresses.length;
-        require(assetsLength == sourceAddresses.length, "ERR_PARAMS_LENGTH);
+        require(assetsLength == sourceAddresses.length, "ERR_PARAMS_LENGTH");
         for(uint i =0; i < assetsLength; i++) {
-            address asset = assetsAddresses[i];
+            address asset = assetAddresses[i];
             address source = sourceAddresses[i];
             assetPriceProvider[asset] = IAggregator(source);
             emit AssetPriceProvidersUpdated(asset, source);
@@ -65,13 +65,11 @@ contract ProxyPriceProvider is Ownable {
     function getAssetPrice(address assetAddress) public view returns (uint price) {
         IAggregator source = assetPriceProvider[assetAddress];
         if(address(source) == address(0x0)) {
-            return fallbackOracle();
+            revert("err no source");
         } else {
             int256 providedPrice = source.latestAnswer();
             if(providedPrice > 0) {
                 price = uint(providedPrice);
-            } else {
-
             }
         }
 

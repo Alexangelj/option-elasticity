@@ -124,8 +124,26 @@ const setupOptionPool = async (
     await primitiveProxy.approvePool();
 
     // gets the pool instance
-    let address = await primitiveProxy.bPool();
-    pool = new ethers.Contract(address, BPool.abi, signer);
+    let corePoolAddress = await primitiveProxy.bPool();
+    let optionPool = await ethers.getContractFactory("OptionPool");
+    let pool = await optionPool.deploy();
+    await primitiveProxy.setController(pool.address);
+    await underlyingToken.approve(pool.address, MAX_UINT);
+    await quoteToken.approve(pool.address, MAX_UINT);
+    await underlyingToken.approve(corePoolAddress, MAX_UINT);
+    await quoteToken.approve(corePoolAddress, MAX_UINT);
+    await pool.initialize(
+        corePoolAddress,
+        "Primitive Option Pool V1",
+        "PROP",
+        parseEther("1"),
+        underlyingToken.address,
+        quoteToken.address,
+        parseEther("101"),
+        parseEther("100"),
+        100,
+        31449600
+    );
     return pool;
 };
 

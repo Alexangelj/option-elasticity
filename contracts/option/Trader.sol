@@ -41,7 +41,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         view
         returns (address underlyingToken, address quoteToken)
     {
-        address[] memory tokens = optionPool.getFinalTokens();
+        address[] memory tokens = optionPool.getCurrentTokens();
         underlyingToken = tokens[0];
         quoteToken = tokens[1];
     }
