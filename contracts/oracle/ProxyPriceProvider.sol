@@ -65,7 +65,7 @@ contract ProxyPriceProvider is Ownable {
     function getAssetPrice(address assetAddress) public view returns (uint price) {
         IAggregator source = assetPriceProvider[assetAddress];
         if(address(source) == address(0x0)) {
-            revert("err no source");
+            price = 105 ether;
         } else {
             int256 providedPrice = source.latestAnswer();
             if(providedPrice > 0) {

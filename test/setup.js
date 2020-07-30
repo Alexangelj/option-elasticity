@@ -108,6 +108,7 @@ const setupOptionProtocol = async (signer) => {
 
 const setupOptionPool = async (
     primitiveProxy,
+    priceProvider,
     poolFactory,
     underlyingToken,
     quoteToken,
@@ -134,12 +135,12 @@ const setupOptionPool = async (
     await quoteToken.approve(corePoolAddress, MAX_UINT);
     await pool.initialize(
         corePoolAddress,
+        priceProvider.address,
         "Primitive Option Pool V1",
         "PROP",
         parseEther("100"),
         underlyingToken.address,
         quoteToken.address,
-        parseEther("101"),
         parseEther("100"),
         100,
         31449600

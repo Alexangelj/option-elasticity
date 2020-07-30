@@ -13,6 +13,7 @@ import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { Pricing } from "../Pricing.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
 import { BNum } from "../libraries/BNum.sol";
+import { IProxyPriceProvider } from "../interfaces/IProxyPriceProvider.sol";
 
 
 contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
@@ -54,6 +55,7 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
     Controllers public controllers;
     Parameters public parameters;
     Assets public assets;
+    IProxyPriceProvider public priceProvider;
 
     // Modifiers
 
@@ -71,23 +73,25 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
 
     function initialize(
         address optionPool_,
+        address priceProvider_,
         string calldata name_,
         string calldata symbol_,
         uint initialSupply,
         address underlyingToken_,
         address quoteToken_,
-        uint spot_,
         uint strike_,
         uint vol_,
         uint expiry_
     ) external {
         require(optionPool_ != address(0x0), "ERR_ZERO_ADDRESS");
         require(initialSupply > 0, "ERR_ZERO_SUPPLY");
+        priceProvider = IProxyPriceProvider(priceProvider_);
+
         controllers.optionPool = IBPool(optionPool_);
         controllers.controller = msg.sender;
         controllers.tokenBinder = msg.sender;
         {
-        parameters.spot = spot_;
+        parameters.spot = IProxyPriceProvider(priceProvider_).getAssetPrice(underlyingToken_);
         parameters.strike = strike_;
         parameters.vol = vol_;
         parameters.expiry = expiry_;

@@ -35,7 +35,7 @@ const newWallets = async () => {
 };
 
 describe("OptionPool.sol", () => {
-    let wallets, Admin, Alice, lending, reserve, asset, trader, debtToken, pool;
+    let wallets, Admin, Alice, lending, reserve, asset, trader, debtToken, pool, priceProvider;
     let ether, dai, iEther, iDai, iPool;
     let risky, riskFree, pricing, poolFactory, primitiveFactory;
     let s, k, o, t;
@@ -53,9 +53,10 @@ describe("OptionPool.sol", () => {
         [ether, dai] = await setupTokens();
 
         // pricing is the black-scholes library, primitiveFactory deploys the option pools
-        [pricing, primitiveFactory] = await setupMultipleContracts([
+        [pricing, primitiveFactory, priceProvider] = await setupMultipleContracts([
             "Pricing",
             "PFactory",
+            "ProxyPriceProvider"
         ]);
 
         // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
@@ -68,7 +69,7 @@ describe("OptionPool.sol", () => {
         poolFactory = await setupOptionProtocol(Admin);
 
         // get the first pool that was deployed
-        pool = await setupOptionPool(primitiveFactory, poolFactory, ether, dai, Admin);
+        pool = await setupOptionPool(primitiveFactory, priceProvider, poolFactory, ether, dai, Admin);
 
         // approve tokens
         let contractsToApprove = [primitiveFactory];
