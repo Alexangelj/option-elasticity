@@ -142,7 +142,6 @@ const setupOptionPool = async (
         underlyingToken.address,
         quoteToken.address,
         parseEther("100"),
-        100,
         31449600
     );
     return pool;

@@ -80,7 +80,6 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         address underlyingToken_,
         address quoteToken_,
         uint strike_,
-        uint vol_,
         uint expiry_
     ) external {
         require(optionPool_ != address(0x0), "ERR_ZERO_ADDRESS");
@@ -93,7 +92,7 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         {
         parameters.spot = IProxyPriceProvider(priceProvider_).getAssetPrice(underlyingToken_);
         parameters.strike = strike_;
-        parameters.vol = vol_;
+        parameters.vol = IProxyPriceProvider(priceProvider_).getAssetVolatility(underlyingToken_);
         parameters.expiry = expiry_;
         }
         {

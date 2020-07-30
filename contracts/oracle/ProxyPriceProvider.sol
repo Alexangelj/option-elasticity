@@ -72,7 +72,10 @@ contract ProxyPriceProvider is Ownable {
                 price = uint(providedPrice);
             }
         }
+    }
 
+    function getAssetVolatility(address assetAddress) public view returns (uint volatility) {
+        volatility = 100;
     }
 
     /**
