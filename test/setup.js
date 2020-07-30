@@ -126,7 +126,7 @@ const setupOptionPool = async (
     // gets the pool instance
     let corePoolAddress = await primitiveProxy.bPool();
     let optionPool = await ethers.getContractFactory("OptionPool");
-    pool = await optionPool.deploy();
+    let pool = await optionPool.deploy();
     await primitiveProxy.setController(pool.address);
     await underlyingToken.approve(pool.address, MAX_UINT);
     await quoteToken.approve(pool.address, MAX_UINT);

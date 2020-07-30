@@ -1,4 +1,8 @@
 const bre = require("@nomiclabs/buidler");
+const { assert, expect } = require("chai");
+const chai = require("chai");
+const { solidity } = require("ethereum-waffle");
+chai.use(solidity);
 const { parseEther } = bre.ethers.utils;
 const LendingPool = require("../artifacts/LendingPool.json");
 const Reserve = require("../artifacts/Reserve.json");
@@ -29,10 +33,10 @@ const newWallets = async () => {
     return wallets;
 };
 
-describe("Reserve/Lending Contract", () => {
+describe("OptionPool.sol", () => {
     let wallets, Admin, Alice, lending, reserve, asset, trader, debtToken;
     let ether, dai, iEther, iDai, iPool;
-    let risky, riskFree, pricing, poolFactory, pfi;
+    let risky, riskFree, pricing, poolFactory, primitiveFactory;
     let s, k, o, t;
     let etherBalance, daiBalance, iEtherBalance, iDaiBalance;
 
@@ -45,21 +49,13 @@ describe("Reserve/Lending Contract", () => {
         Alice = Admin._address;
         // standard erc20s with mint functions
         // iou mappings at a 1:1 ratio with undelying asset. Deposit 1 ether => get 1 iEther
-        [ether, dai, iEther, iDai] = await setupTokens();
+        [ether, dai] = await setupTokens();
 
-        // gets contract factory for the contract names then calls deploy() on them
-        [lending, reserve, trader, pricing, pfi] = await setupMultipleContracts([
-            "LendingPool",
-            "Reserve",
-            "Trader",
+        // pricing is the black-scholes library, primitiveFactory deploys the option pools
+        [pricing, primitiveFactory] = await setupMultipleContracts([
             "Pricing",
             "PFactory",
         ]);
-        // calls initialize() on each of the contracts, passing their addresses to eachother
-        await setupLendingProtocol(lending, reserve, trader);
-        // links an asset to a debt token with a 1:1 mapping.
-        await linkDebtToken(reserve, dai, iDai);
-        await linkDebtToken(reserve, ether, iEther);
 
         // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
         s = parseEther("101");
@@ -67,17 +63,15 @@ describe("Reserve/Lending Contract", () => {
         o = 100;
         t = 31449600; //one year
 
-        // get the actual pool factory
+        // get the actual Bpool factory
         poolFactory = await setupOptionProtocol(Admin);
 
         // get the first pool that was deployed
-        pool = await setupOptionPool(pfi, poolFactory, ether, dai, Admin);
-        iPool = await setupDebtToken();
-        await linkDebtToken(reserve, pool, iPool);
+        pool = await setupOptionPool(primitiveFactory, poolFactory, ether, dai, Admin);
 
         // approve tokens
-        let contractsToApprove = [lending, reserve, trader, pfi];
-        let tokensToBeApproved = [ether, dai, iEther, iDai, pool];
+        let contractsToApprove = [primitiveFactory];
+        let tokensToBeApproved = [ether, dai, pool];
         let ownersToApprove = [Admin];
         await batchApproval(contractsToApprove, tokensToBeApproved, ownersToApprove);
 
@@ -88,62 +82,9 @@ describe("Reserve/Lending Contract", () => {
         );
     });
 
-    describe("Test Reserve Functions", () => {
-        it("initializes with enter()", async () => {
-            await lending.enter(Alice, dai.address, parseEther("1"));
-        });
-
-        it("calls enter() multiple times in a row", async () => {
-            await lending.enter(Alice, dai.address, parseEther("1"));
-            await lending.enter(Alice, dai.address, parseEther("1"));
-            await lending.enter(Alice, dai.address, parseEther("1"));
-        });
-
-        it("calls updateState() directly", async () => {
-            await dai.transfer(reserve.address, parseEther("10"));
-            await reserve.updateStateWithDeposit(Alice, dai.address, parseEther("5"));
-        });
-    });
-
-    describe("buyOption", () => {
-        it("should buy an option", async () => {
-            // gets the weights and amounts then transfers them into the pool
-            // initializes with weights and finalize the pool
-            //await calibratePool(Admin, pool, pricing, pfi, ether, dai, s, k, o, t);
-            // transfers assets to the reserve so we can borrow them
-            await lending.enter(Alice, ether.address, parseEther("10"));
-
-            // gets balances
-            let optionBal = await pool.balanceOf(trader.address);
-            let riskyBal = await ether.balanceOf(Alice);
-            let riskFreeBal = await dai.balanceOf(Alice);
-
-            // purchases an option using borrowed ether + premium
-            await trader.buyOption(pool.address, parseEther("1"));
-            console.log(
-                formatEther(await pool.balanceOf(reserve.address)),
-                formatEther(await iPool.balanceOf(Alice))
-            );
-
-            const debtArray = [
-                ["Alice", Alice],
-                ["Reserve", reserve.address],
-                ["Lending", lending.address],
-                ["Trader", trader.address],
-            ];
-            async function getDebtBalances(array) {
-                for (i = 0; i < array.length; i++) {
-                    let name = array[i][0];
-                    let account = array[i][1];
-                    let bal = await iPool.balanceOf(account);
-                    console.log(name, await iPool.symbol(), formatEther(bal));
-                }
-            }
-
-            await getDebtBalances(debtArray);
-
-            let borrowed = await reserve.getBorrowBalance(Alice, ether.address);
-            console.log(formatEther(borrowed));
+    describe("OptionPool View Functions", () => {
+        it("should have the same name", async () => {
+            console.log((await pool.getDenormalizedWeight(ether.address)).toString());
         });
     });
 });
