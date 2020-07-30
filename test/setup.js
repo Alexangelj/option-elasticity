@@ -136,7 +136,7 @@ const setupOptionPool = async (
         corePoolAddress,
         "Primitive Option Pool V1",
         "PROP",
-        parseEther("1"),
+        parseEther("100"),
         underlyingToken.address,
         quoteToken.address,
         parseEther("101"),
@@ -193,7 +193,34 @@ const getMultipleBalances = async (tokensArray, account) => {
     return balancesArray;
 };
 
+const getStateOfPool = async (pool, pricing, account) => {
+    let totalSupply = await pool.totalSupply();
+    let balanceOfAccount = await pool.balanceOf(account);
+    let tokens = await pool.getCurrentTokens();
+    let ether = tokens[0];
+    let dai = tokens[1];
+    let etherBalance = await pool.getBalance(ether);
+    let daiBalance = await pool.getBalance(dai);
+    let etherWeight = await pool.getNormalizedWeight(ether);
+    let daiWeight = await pool.getNormalizedWeight(dai);
+    let params = await pool.getParameters();
+    let weights = await pricing.weights(params.s, params.k, params.o, params.t);
+    let elasticity = weights.riskyW;
+
+    let state = {
+        elasticity: formatEther(elasticity),
+        supply: formatEther(totalSupply),
+        bal: formatEther(balanceOfAccount),
+        ethBal: formatEther(etherBalance),
+        daiBal: formatEther(daiBalance),
+        ethWeight: formatEther(etherWeight),
+        daiWeight: formatEther(daiWeight)
+    }
+    return state;
+}
+
 Object.assign(module.exports, {
+    getStateOfPool,
     setupTokens,
     setupMultipleContracts,
     batchApproval,

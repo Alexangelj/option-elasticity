@@ -12,6 +12,7 @@ import { IERC20 } from "../interfaces/IERC20.sol";
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { Pricing } from "../Pricing.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
+import { BNum } from "../libraries/BNum.sol";
 
 
 contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
@@ -205,7 +206,7 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         nonReentrant
     {
         uint poolTotal = totalSupply;
-        uint ratio = SafeMath.div(poolAmountOut, poolTotal);
+        uint ratio = BNum.bdiv(poolAmountOut, poolTotal);
         require(ratio != 0, "ERR_MATH_APPROX");
 
         IBPool optionPool_ = optionPool();
@@ -215,7 +216,7 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         for (uint i = 0; i < tokensLength; i++) {
             address t = tokens[i];
             uint bal = optionPool_.getBalance(t);
-            uint tokenAmountIn = SafeMath.mul(ratio, bal);
+            uint tokenAmountIn = BNum.bmul(ratio, bal);
             require(tokenAmountIn != 0, "ERR_MATH_APPROX");
             require(tokenAmountIn <= maxAmountsIn[i], "ERR_LIMIT_IN");
             emit LOG_JOIN(msg.sender, t, tokenAmountIn);
@@ -230,7 +231,7 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         nonReentrant
     {
         uint poolTotal = totalSupply;
-        uint ratio = SafeMath.div(poolAmountIn, poolTotal);
+        uint ratio = BNum.bdiv(poolAmountIn, poolTotal);
         require(ratio != 0, "ERR_MATH_APPROX");
 
         _pullPoolShare(msg.sender, poolAmountIn);
@@ -243,7 +244,7 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         for (uint i = 0; i < tokensLength; i++) {
             address t = tokens[i];
             uint bal = optionPool_.getBalance(t);
-            uint tokenAmountOut = SafeMath.mul(ratio, bal);
+            uint tokenAmountOut = BNum.bmul(ratio, bal);
             require(tokenAmountOut != 0, "ERR_MATH_APPROX");
             require(tokenAmountOut >= minAmountsOut[i], "ERR_LIMIT_OUT");
             emit LOG_EXIT(msg.sender, t, tokenAmountOut);
@@ -324,6 +325,10 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
         return optionPool().getDenormalizedWeight(token_);
     }
 
+    function getNormalizedWeight(address token_) external view returns (uint) {
+        return optionPool().getNormalizedWeight(token_);
+    }
+
     function getTotalDenormalizedWeight() external view returns (uint) {
         return optionPool().getTotalDenormalizedWeight();
     }
@@ -334,6 +339,14 @@ contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
 
     function getBalance(address token) external view returns(uint) {
         return optionPool().getBalance(token);
+    }
+
+    function getParameters() external view returns (uint s, uint k, uint o, uint t) {
+        Parameters memory params = parameters;
+        s = params.spot;
+        k = params.strike;
+        o = params.vol;
+        t = params.expiry;
     }
 
     function calcPoolOutGivenSingleIn(uint tokenBalanceIn,

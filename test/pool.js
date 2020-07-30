@@ -24,6 +24,7 @@ const {
     calibratePool,
     getMultipleBalances,
     setupDebtToken,
+    getStateOfPool
 } = require("./setup.js");
 
 const ethers = bre.ethers;
@@ -34,7 +35,7 @@ const newWallets = async () => {
 };
 
 describe("OptionPool.sol", () => {
-    let wallets, Admin, Alice, lending, reserve, asset, trader, debtToken;
+    let wallets, Admin, Alice, lending, reserve, asset, trader, debtToken, pool;
     let ether, dai, iEther, iDai, iPool;
     let risky, riskFree, pricing, poolFactory, primitiveFactory;
     let s, k, o, t;
@@ -76,15 +77,19 @@ describe("OptionPool.sol", () => {
         await batchApproval(contractsToApprove, tokensToBeApproved, ownersToApprove);
 
         // initial balances
-        [etherBalance, daiBalance, iEtherBalance, iDaiBalance] = await getMultipleBalances(
+        [etherBalance, daiBalance, poolBalance] = await getMultipleBalances(
             tokensToBeApproved,
             Alice
         );
     });
 
-    describe("OptionPool View Functions", () => {
-        it("should have the same name", async () => {
-            console.log((await pool.getDenormalizedWeight(ether.address)).toString());
+    describe("joinPool", () => {
+        it("should join the pool", async () => {
+            let state = await getStateOfPool(pool, pricing, Alice);
+            console.log(state);
+            await pool.joinPool(parseEther("1"), [parseEther("10000"), parseEther("100000")]);
+            state = await getStateOfPool(pool, pricing, Alice);
+            console.log(state);
         });
     });
 });
