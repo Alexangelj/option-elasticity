@@ -27,9 +27,9 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         address buyer;
         address underlyingToken;
         address quoteToken;
-        uint lotSize;
-        uint premium;
-        uint lpSharePayment;
+        uint256 lotSize;
+        uint256 premium;
+        uint256 lpSharePayment;
     }
 
     function initialize(address lendingPoolAddress) public {
@@ -73,28 +73,34 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         // initiate transaction
         SyntheticPosition memory position;
         {
-        position.optionPool = optionPool;
-        position.buyer = msg.sender;
-        position.underlyingToken = underlyingToken;
-        position.quoteToken = quoteToken;
-        position.lotSize = lotSize;
-        position.premium = premium;
+            position.optionPool = optionPool;
+            position.buyer = msg.sender;
+            position.underlyingToken = underlyingToken;
+            position.quoteToken = quoteToken;
+            position.lotSize = lotSize;
+            position.premium = premium;
         }
         //_syntheticPosition(optionPool, underlyingToken, quoteToken, lotSize, premium);
         _syntheticPosition(position);
     }
 
-    function _syntheticPosition(
-        SyntheticPosition memory position
-    ) internal returns (bool) {
+    function _syntheticPosition(SyntheticPosition memory position) internal returns (bool) {
         // everythings about to get put into a maze, so lets track the original buyer
         address buyer = position.buyer;
         // pull the premium for the lot size so we can deposit it into the pool
         _pull(position.quoteToken, position.premium);
         // calculate the expected amount of lp shares received for the deposit
-        uint256 minOutput = calcExpectedPoolOut(position.optionPool, position.quoteToken, position.premium);
+        uint256 minOutput = calcExpectedPoolOut(
+            position.optionPool,
+            position.quoteToken,
+            position.premium
+        );
         // deposit position.premium denominated in quote token and returns LP share tokens
-        (uint poolAmountOut) = _enterPool(position.optionPool, position.quoteToken, position.premium);
+        uint256 poolAmountOut = _enterPool(
+            position.optionPool,
+            position.quoteToken,
+            position.premium
+        );
         // check lp shares have been paid for the corresponding lot size
         require(poolAmountOut >= minOutput, "ERR_INSUFFICIENT_LP");
         // call borrow, borrowing the underlying asset and paying the lp tokens
@@ -104,19 +110,30 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         return _borrow(position);
     }
 
-    function calcExpectedPoolOut(IBPool optionPool, address inputToken, uint tokenAmountIn) public view returns (uint poolAmountOut) {
-        uint tokenBalanceIn;
-        uint tokenWeightIn;
+    function calcExpectedPoolOut(
+        IBPool optionPool,
+        address inputToken,
+        uint256 tokenAmountIn
+    ) public view returns (uint256 poolAmountOut) {
+        uint256 tokenBalanceIn;
+        uint256 tokenWeightIn;
         {
-        (address token0, address token1) = getTokens(optionPool);
-        uint balanceToken0 = optionPool.getBalance(token0);
-        uint balanceToken1 = optionPool.getBalance(token1);
-        uint weightToken0 = optionPool.getDenormalizedWeight(token0);
-        uint weightToken1 = optionPool.getDenormalizedWeight(token1);
-        tokenBalanceIn = token0 == inputToken ? balanceToken0 : balanceToken1;
-        tokenWeightIn = token0 == inputToken ? weightToken0 : weightToken1;
+            (address token0, address token1) = getTokens(optionPool);
+            uint256 balanceToken0 = optionPool.getBalance(token0);
+            uint256 balanceToken1 = optionPool.getBalance(token1);
+            uint256 weightToken0 = optionPool.getDenormalizedWeight(token0);
+            uint256 weightToken1 = optionPool.getDenormalizedWeight(token1);
+            tokenBalanceIn = token0 == inputToken ? balanceToken0 : balanceToken1;
+            tokenWeightIn = token0 == inputToken ? weightToken0 : weightToken1;
         }
-        poolAmountOut = optionPool.calcPoolOutGivenSingleIn(tokenBalanceIn, tokenWeightIn, optionPool.totalSupply(), optionPool.getTotalDenormalizedWeight(), tokenAmountIn, optionPool.getSwapFee());
+        poolAmountOut = optionPool.calcPoolOutGivenSingleIn(
+            tokenBalanceIn,
+            tokenWeightIn,
+            optionPool.totalSupply(),
+            optionPool.getTotalDenormalizedWeight(),
+            tokenAmountIn,
+            optionPool.getSwapFee()
+        );
     }
 
     function secureLoan(
@@ -140,7 +157,6 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
     ) public returns (bool) {
         uint256 poolAmountOut = _enterPool(IBPool(optionPool), token, input).add(payment);
         return _depositCollateral(buyer, input, token, optionPool, poolAmountOut);
-
     }
 
     function _enterPool(
@@ -153,10 +169,13 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         require(poolAmountOut >= minOutput && poolAmountOut > 0, "ERR_INSUFFICIENT_LP");
     }
 
-    function _depositCollateral(address buyer, uint debt, address borrowedToken, address optionPoolAddress, uint256 poolAmountOut)
-        internal
-        returns (bool)
-    {
+    function _depositCollateral(
+        address buyer,
+        uint256 debt,
+        address borrowedToken,
+        address optionPoolAddress,
+        uint256 poolAmountOut
+    ) internal returns (bool) {
         require(
             _checkApproval(optionPoolAddress, address(lendingPool), poolAmountOut),
             "ERR_APPROVALS"
@@ -180,9 +199,7 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
         return true;
     }
 
-    function _borrow(
-        SyntheticPosition memory position
-    ) internal nonReentrant returns (bool) {
+    function _borrow(SyntheticPosition memory position) internal nonReentrant returns (bool) {
         // should pass in data to deposit and then send lp tokens out
         bytes4 selector = bytes4(
             keccak256(bytes("_depositAndCollateralize(address,address,address,uint256,uint256)"))
@@ -195,7 +212,14 @@ contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
             position.lotSize,
             position.lpSharePayment
         );
-        return lendingPool.borrow(position.optionPool, position.buyer, address(this), position.underlyingToken, position.lotSize, params);
+        return
+            lendingPool.borrow(
+                position.optionPool,
+                position.buyer,
+                address(this),
+                position.underlyingToken,
+                position.lotSize,
+                params
+            );
     }
-
 }
