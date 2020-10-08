@@ -6,7 +6,7 @@ pragma solidity >=0.5.12 <=0.6.2;
 
 // Primitive
 import { ERC20 } from "../tokens/ERC20.sol";
-import { IERC20 } from "../interfaces/IERC20.sol";
+import { IERC20 } from "../tokens/IERC20.sol";
 import { IOptionPool } from "./interfaces/IOptionPool.sol";
 import { IProxyPriceProvider } from "../oracle/interfaces/IProxyPriceProvider.sol";
 
@@ -15,7 +15,7 @@ import { BNum } from "../libraries/BNum.sol";
 import { IBPool } from "./interfaces/IBPool.sol";
 
 // Open Zeppelin
-import { Pricing } from "../Pricing.sol";
+import { Pricing } from "../libraries/Pricing.sol";
 import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
@@ -107,8 +107,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             assets.underlyingToken = underlyingToken_;
             assets.quoteToken = quoteToken_;
         }
-        _setupName(name_);
-        _setupSymbol(symbol_);
+
+        name = name_;
+        symbol = symbol_;
         _mintPoolShare(initialSupply);
         _pushPoolShare(msg.sender, initialSupply);
         _initializeWeights();

@@ -5,12 +5,16 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @author Primitive
  */
 
-import { IIOU } from "../interfaces/IIOU.sol";
-import { ILendingPool } from "../interfaces/ILendingPool.sol";
-import { IERC20 } from "../interfaces/IERC20.sol";
+// Primitive
+import { IERC20 } from "../tokens/IERC20.sol";
+import { IIOU } from "./interfaces/IIOU.sol";
+import { ILendingPool } from "./interfaces/ILendingPool.sol";
+
+// Open Zeppelin
+import { Ownable } from "../utils/Ownable.sol";
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
-import { Ownable } from "../utils/Ownable.sol";
+
 import "@nomiclabs/buidler/console.sol";
 
 contract Reserve is Ownable {
@@ -103,7 +107,7 @@ contract Reserve is Ownable {
         return (true, actualDebtBalance);
     }
 
-    function getBorrowBalance(address account, address asset) public view returns (uint) {
+    function getBorrowBalance(address account, address asset) public view returns (uint256) {
         ReserveData storage reserve = _reserves[asset];
         return reserve.borrowBalances[account];
     }

@@ -13,7 +13,7 @@ import { IBFactory } from "./interfaces/IBFactory.sol";
 import { IBPool } from "./interfaces/IBPool.sol";
 
 // Open Zeppelin
-import { SafeMath } from "./libraries/SafeMath.sol";
+import { SafeMath } from "../libraries/SafeMath.sol";
 import "@nomiclabs/buidler/console.sol";
 
 contract OptionsController {

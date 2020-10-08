@@ -4,10 +4,10 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @title Optinionated ERC-20 token implementation.
  */
 
-import { SafeMath } from "../libraries/SafeMath.sol";
 import { Address } from "../libraries/Address.sol";
-import { IERC20 } from "../interfaces/IERC20.sol";
 import { Context } from "../utils/Context.sol";
+import { IERC20 } from "./IERC20.sol";
+import { SafeMath } from "../libraries/SafeMath.sol";
 
 contract ERC20 is Context, IERC20 {
     using SafeMath for uint256;

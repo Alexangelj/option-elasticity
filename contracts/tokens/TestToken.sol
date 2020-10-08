@@ -7,10 +7,10 @@ contract TestToken is ERC20 {
         string memory name_,
         string memory symbol_,
         uint256 totalSupply
-    ) public ERC20 {
+    ) public {
         _mint(msg.sender, totalSupply);
         name = name_;
-        symbole = symbol_;
+        symbol = symbol_;
     }
 
     function mint(address to, uint256 amount) public returns (bool) {

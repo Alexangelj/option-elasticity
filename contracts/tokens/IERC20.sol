@@ -3,6 +3,8 @@ pragma solidity >=0.5.12 <=0.6.2;
 interface IERC20 {
     function symbol() external view returns (string memory);
 
+    function name() external view returns (string memory);
+
     /**
      * @dev Returns the amount of tokens in existence.
      */

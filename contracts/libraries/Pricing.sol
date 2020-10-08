@@ -5,8 +5,8 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @author Alexander Angel
  */
 
-import { ABDKMath64x64 } from "./libraries/ABDKMath64x64.sol";
-import { SafeMath } from "./libraries/SafeMath.sol";
+import { ABDKMath64x64 } from "./ABDKMath64x64.sol";
+import { SafeMath } from "./SafeMath.sol";
 
 library Pricing {
     using ABDKMath64x64 for *; // stores numerators as int128, denominator is 2^64.

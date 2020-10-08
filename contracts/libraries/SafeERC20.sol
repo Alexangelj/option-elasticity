@@ -1,8 +1,8 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
-import { SafeMath } from "./SafeMath.sol";
-import { IERC20 } from "../interfaces/IERC20.sol";
 import { Address } from "./Address.sol";
+import { IERC20 } from "../tokens/IERC20.sol";
+import { SafeMath } from "./SafeMath.sol";
 
 /**
  * @title SafeERC20
