@@ -1,7 +1,7 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
 import { IERC20, ERC20 } from "../tokens/ERC20.sol";
-import { IReserve } from "../interfaces/IReserve.sol";
+import { IReserve } from "./interfaces/IReserve.sol";
 
 contract IOU is ERC20("Debt Instrument for Primitive", "IOU") {
     IReserve public reserve;

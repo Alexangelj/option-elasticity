@@ -5,7 +5,7 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @author Primitive
  */
 
-import { IAggregator } from "../interfaces/IAggregator.sol";
+import { IAggregator } from "./interfaces/IAggregator.sol";
 import { Ownable } from "../utils/Ownable.sol";
 
 contract ProxyPriceProvider is Ownable {

@@ -4,10 +4,15 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @title Manages core pools.
  */
 
-import { Pricing } from "./Pricing.sol";
+// Primitive
+import { IERC20 } from "../tokens/ERC20.sol";
+import { Pricing } from "../libraries/Pricing.sol";
+
+// Balancer
 import { IBFactory } from "./interfaces/IBFactory.sol";
 import { IBPool } from "./interfaces/IBPool.sol";
-import { IERC20 } from "./tokens/ERC20.sol";
+
+// Open Zeppelin
 import { SafeMath } from "./libraries/SafeMath.sol";
 import "@nomiclabs/buidler/console.sol";
 

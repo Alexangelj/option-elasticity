@@ -6,13 +6,18 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @author Primitive
  */
 
-import { IERC20 } from "../interfaces/IERC20.sol";
+// Primitive
+import { IERC20 } from "../tokens/IERC20.sol";
+import { ILendingPool } from "./interfaces/ILendingPool.sol";
+import { ISecuredLoanReceiver } from "./interfaces/ISecuredLoanReceiver.sol";
+
+// Balancer
+import { IBPool } from "../pool/interfaces/IBPool.sol";
+
+// Open Zeppelin
+import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
 import { SafeERC20 } from "../libraries/SafeERC20.sol";
 import { SafeMath } from "../libraries/SafeMath.sol";
-import { IBPool } from "../interfaces/IBPool.sol";
-import { ILendingPool } from "../interfaces/ILendingPool.sol";
-import { ISecuredLoanReceiver } from "../interfaces/ISecuredLoanReceiver.sol";
-import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
 
 import "@nomiclabs/buidler/console.sol";
 

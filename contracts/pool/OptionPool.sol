@@ -4,20 +4,25 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @title Option Pool wrapping a Geometric Mean Automated Market Maker Pool.
  */
 
-import { IOptionPool } from "../interfaces/IOptionPool.sol";
-import { IBPool } from "../interfaces/IBPool.sol";
-import { PoolToken } from "../tokens/PoolToken.sol";
-import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
+// Primitive
+import { ERC20 } from "../tokens/ERC20.sol";
 import { IERC20 } from "../interfaces/IERC20.sol";
-import { SafeERC20 } from "../libraries/SafeERC20.sol";
-import { Pricing } from "../Pricing.sol";
-import { SafeMath } from "../libraries/SafeMath.sol";
+import { IOptionPool } from "./interfaces/IOptionPool.sol";
+import { IProxyPriceProvider } from "../oracle/interfaces/IProxyPriceProvider.sol";
+
+// Balancer
 import { BNum } from "../libraries/BNum.sol";
-import { IProxyPriceProvider } from "../interfaces/IProxyPriceProvider.sol";
+import { IBPool } from "./interfaces/IBPool.sol";
+
+// Open Zeppelin
+import { Pricing } from "../Pricing.sol";
+import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
+import { SafeERC20 } from "../libraries/SafeERC20.sol";
+import { SafeMath } from "../libraries/SafeMath.sol";
 
 import "@nomiclabs/buidler/console.sol";
 
-contract OptionPool is IOptionPool, PoolToken, ReentrancyGuard {
+contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
