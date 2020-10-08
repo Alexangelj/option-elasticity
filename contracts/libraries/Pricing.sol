@@ -1,5 +1,10 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
+/**
+ * @title Black-scholes Solidity Math Library
+ * @author Alexander Angel
+ */
+
 import { ABDKMath64x64 } from "./libraries/ABDKMath64x64.sol";
 import { SafeMath } from "./libraries/SafeMath.sol";
 

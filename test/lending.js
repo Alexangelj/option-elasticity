@@ -48,13 +48,17 @@ describe("Reserve/Lending Contract", () => {
         [ether, dai, iEther, iDai] = await setupTokens();
 
         // gets contract factory for the contract names then calls deploy() on them
-        [lending, reserve, trader, pricing, pfi] = await setupMultipleContracts([
+        [lending, reserve, trader, pricing, pfi, priceProvider] = await setupMultipleContracts([
             "LendingPool",
             "Reserve",
             "Trader",
             "Pricing",
             "PFactory",
+            "ProxyPriceProvider",
         ]);
+
+        // sets the test spot price
+        await priceProvider.setTestPrice(parseEther("105"));
         // calls initialize() on each of the contracts, passing their addresses to eachother
         await setupLendingProtocol(lending, reserve, trader);
         // links an asset to a debt token with a 1:1 mapping.
@@ -71,7 +75,7 @@ describe("Reserve/Lending Contract", () => {
         poolFactory = await setupOptionProtocol(Admin);
 
         // get the first pool that was deployed
-        pool = await setupOptionPool(pfi, poolFactory, ether, dai, Admin);
+        pool = await setupOptionPool(pfi, priceProvider, poolFactory, ether, dai, Admin);
         iPool = await setupDebtToken();
         await linkDebtToken(reserve, pool, iPool);
 
@@ -109,6 +113,7 @@ describe("Reserve/Lending Contract", () => {
         it("should buy an option", async () => {
             // gets the weights and amounts then transfers them into the pool
             // initializes with weights and finalize the pool
+            console.log(await pool.controller(), pfi.address);
             await calibratePool(Admin, pool, pricing, pfi, ether, dai, s, k, o, t);
             // transfers assets to the reserve so we can borrow them
             await lending.enter(Alice, ether.address, parseEther("10"));

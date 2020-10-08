@@ -59,7 +59,7 @@ describe("OptionPool.sol", () => {
             "ProxyPriceProvider",
         ]);
 
-        // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
+        // get parameters, s = spot = x, k  = strike, o = sigma = volatility, t = T until expiry
         s = parseEther("101");
         k = parseEther("100");
         o = 100;

@@ -1,8 +1,8 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
 /**
- * @title Trader
- * @notice Proxy contract for pool
+ * @title Lending Router
+ * @notice A user friendly contract to engage the OptionPools using borrowed assets.
  * @author Primitive
  */
 
@@ -16,7 +16,7 @@ import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
 
 import "@nomiclabs/buidler/console.sol";
 
-contract Trader is ISecuredLoanReceiver, ReentrancyGuard {
+contract LendingRouter is ISecuredLoanReceiver, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 

@@ -30,7 +30,7 @@ const setupDebtToken = async () => {
     debtToken = await ethers.getContractFactory("IOU");
     debtToken = await debtToken.deploy();
     return debtToken;
-}
+};
 
 const setupMultipleContracts = async (arrayOfContractNames) => {
     let contracts = [];
@@ -67,7 +67,7 @@ const setupLendingProtocol = async (lendingPool, reserve, trader) => {
         await lendingPool.initialize(reserve.address);
         await reserve.initialize(lendingPool.address);
         await trader.initialize(lendingPool.address);
-    } catch(error) {
+    } catch (error) {
         console.log(error);
     }
 };
@@ -164,7 +164,7 @@ const calibratePool = async (
     await riskyAsset.transfer(primitiveProxy.address, amounts.riskyAmount);
     await riskFreeAsset.transfer(primitiveProxy.address, amounts.riskFreeAmount);
     // initializes with weights and finalizes it
-    await primitiveProxy.connect(signer).updateWeights(s, k, o, t);
+    await primitiveProxy.updateWeights(s, k, o, t);
     await primitiveProxy.finalizePool(pool.address);
 };
 
@@ -214,10 +214,10 @@ const getStateOfPool = async (pool, pricing, account) => {
         ethBal: formatEther(etherBalance),
         daiBal: formatEther(daiBalance),
         ethWeight: formatEther(etherWeight),
-        daiWeight: formatEther(daiWeight)
-    }
+        daiWeight: formatEther(daiWeight),
+    };
     return state;
-}
+};
 
 Object.assign(module.exports, {
     getStateOfPool,
@@ -232,5 +232,5 @@ Object.assign(module.exports, {
     calibratePool,
     calculateAmounts,
     getMultipleBalances,
-    setupDebtToken
+    setupDebtToken,
 });
