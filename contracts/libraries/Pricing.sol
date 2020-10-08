@@ -327,6 +327,42 @@ library Pricing {
     }
 
     /**
+     * @dev Gets call option price. Library entry point for easy testing.
+     */
+    function getCall(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) internal pure returns (uint256) {
+        return _fromInt(call(s, k, o, t)).mul(uint256(10**18).div(MANTISSA));
+    }
+
+    /**
+     * @dev Gets call option price. Library entry point for easy testing.
+     */
+    function getCallPrice(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (uint256) {
+        return _fromInt(call(s, k, o, t)).mul(uint256(10**18).div(MANTISSA));
+    }
+
+    /**
+     * @dev Gets put option price. Library entry point for easy testing.
+     */
+    function getPutPrice(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (uint256) {
+        return _fromInt(put(s, k, o, t)).mul(uint256(10**18).div(MANTISSA));
+    }
+
+    /**
      * @dev Library entry point for easy testing.
      */
     function weights(

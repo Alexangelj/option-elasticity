@@ -2,7 +2,7 @@ const bre = require("@nomiclabs/buidler");
 const { parseEther } = bre.ethers.utils;
 const LendingPool = require("../artifacts/LendingPool.json");
 const Reserve = require("../artifacts/Reserve.json");
-const PToken = require("../artifacts/PToken.json");
+const TestToken = require("../artifacts/TestToken.json");
 const IOU = require("../artifacts/IOU.json");
 const BFactory = require("../artifacts/BFactory.json");
 const BPool = require("../artifacts/BPool.json");
@@ -15,9 +15,9 @@ const MAX_UINT = parseEther("10000000000000000000000000000000000000");
 
 const setupTokens = async () => {
     let ether, dai, iEther, iDai;
-    ether = await ethers.getContractFactory("PToken");
+    ether = await ethers.getContractFactory("TestToken");
     ether = await ether.deploy("Ethereum", "ETH", parseEther("100000"));
-    dai = await ethers.getContractFactory("PToken");
+    dai = await ethers.getContractFactory("TestToken");
     dai = await dai.deploy("Dai Stablecoin", "DAI", parseEther("10000000"));
     iEther = await ethers.getContractFactory("IOU");
     iEther = await iEther.deploy();
@@ -138,7 +138,7 @@ const setupOptionPool = async (
         priceProvider.address,
         "Primitive Option Pool V1",
         "PROP",
-        parseEther("100"),
+        parseEther("1"),
         underlyingToken.address,
         quoteToken.address,
         parseEther("100"),
@@ -206,15 +206,26 @@ const getStateOfPool = async (pool, pricing, account) => {
     let params = await pool.getParameters();
     let weights = await pricing.weights(params.s, params.k, params.o, params.t);
     let elasticity = weights.riskyW;
+    let optionCallPrice = await pricing.getCallPrice(params.s, params.k, params.o, params.t);
+    let optionPutPrice = await pricing.getPutPrice(params.s, params.k, params.o, params.t);
+    let riskFreePerPoolShare = daiBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyPerPoolShare = etherBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyValuePerPoolShare = riskyPerPoolShare.mul(params.s).div(parseEther("1"));
+    let totalPoolValuePerShare = riskyValuePerPoolShare.add(riskFreePerPoolShare);
 
     let state = {
         elasticity: formatEther(elasticity),
-        supply: formatEther(totalSupply),
-        bal: formatEther(balanceOfAccount),
-        ethBal: formatEther(etherBalance),
-        daiBal: formatEther(daiBalance),
-        ethWeight: formatEther(etherWeight),
-        daiWeight: formatEther(daiWeight),
+        poolSupply: formatEther(totalSupply),
+        lpTokenBal: formatEther(balanceOfAccount),
+        poolRiskyBal: formatEther(etherBalance),
+        poolRiskFreeBal: formatEther(daiBalance),
+        poolRiskyWeight: formatEther(etherWeight),
+        poolRiskFreeWeight: formatEther(daiWeight),
+        optionCallPrice: formatEther(optionCallPrice),
+        optionPutPrice: formatEther(optionPutPrice),
+        riskyPerPoolShare: formatEther(riskyPerPoolShare),
+        riskFreePerPoolShare: formatEther(riskFreePerPoolShare),
+        totalPoolValuePerShare: formatEther(totalPoolValuePerShare),
     };
     return state;
 };

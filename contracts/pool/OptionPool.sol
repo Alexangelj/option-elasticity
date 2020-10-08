@@ -134,12 +134,13 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         view
         returns (uint256 riskyAmount, uint256 riskFreeAmount)
     {
-        uint256 riskyPrice = 1 ether; // 1 per 100
+        Parameters memory params = parameters;
+        uint256 callValue = Pricing.getCall(params.spot, params.strike, params.vol, params.expiry);
         address underlying = assets.underlyingToken;
         uint256 riskFreePrice = priceProvider.getAssetPrice(underlying); //
-        // 100 * 10 ^ 18, 5.6 * 10 ^ 18. 100 / 5.6 = 17.85
-        riskyAmount = riskyPrice.mul(riskyWeight).div(1 ether);
-        riskFreeAmount = riskFreePrice.mul(riskFreeWeight).div(1 ether);
+        // If callValue is 1, and risky asset is worth 100, for a 50:50 pool, deposit 0.05 risky and 0.5 riskfree.
+        riskyAmount = callValue.mul(riskyWeight).div(riskFreePrice);
+        riskFreeAmount = callValue.mul(riskFreeWeight).div(1 ether);
     }
 
     function _initializeWeights() internal {
@@ -168,7 +169,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             priceProvider.getAssetVolatility(underlying),
             params.expiry
         );
-        (uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyWeight, riskFreeWeight);
+        //(uint256 riskyAmount, uint256 riskFreeAmount) = getAmounts(riskyWeight, riskFreeWeight);
+        uint256 riskyAmount = optionPool_.getBalance(tokens[0]);
+        uint256 riskFreeAmount = optionPool_.getBalance(tokens[1]);
         _rebind(address(tokens[0]), riskyAmount, riskyWeight.mul(25));
         _rebind(address(tokens[1]), riskFreeAmount, riskFreeWeight.mul(25)); // bone == 50, 25 == half
     }

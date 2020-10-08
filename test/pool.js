@@ -4,15 +4,6 @@ const chai = require("chai");
 const { solidity } = require("ethereum-waffle");
 chai.use(solidity);
 const { parseEther } = bre.ethers.utils;
-const LendingPool = require("../artifacts/LendingPool.json");
-const Reserve = require("../artifacts/Reserve.json");
-const PToken = require("../artifacts/PToken.json");
-const IOU = require("../artifacts/IOU.json");
-const BFactory = require("../artifacts/BFactory.json");
-const BPool = require("../artifacts/BPool.json");
-const BPoolTemplateLib = require("../artifacts/BPoolTemplateLib.json");
-const { formatEther, parseUnits } = require("ethers/lib/utils");
-const { deployContract, link } = require("ethereum-waffle");
 const {
     setupTokens,
     setupMultipleContracts,
@@ -55,7 +46,7 @@ describe("OptionPool.sol", () => {
         // pricing is the black-scholes library, primitiveFactory deploys the option pools
         [pricing, primitiveFactory, priceProvider] = await setupMultipleContracts([
             "Pricing",
-            "PFactory",
+            "OptionsController",
             "ProxyPriceProvider",
         ]);
 
