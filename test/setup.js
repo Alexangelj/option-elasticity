@@ -9,6 +9,7 @@ const BPool = require("../artifacts/BPool.json");
 const BPoolTemplateLib = require("../artifacts/BPoolTemplateLib.json");
 const { formatEther, parseUnits } = require("ethers/lib/utils");
 const { deployContract, link } = require("ethereum-waffle");
+const { BigNumber } = require("ethers");
 const ethers = bre.ethers;
 
 const MAX_UINT = parseEther("10000000000000000000000000000000000000");
@@ -193,7 +194,7 @@ const getMultipleBalances = async (tokensArray, account) => {
     return balancesArray;
 };
 
-const getStateOfPool = async (pool, pricing, account) => {
+const getStateOfPool = async (pool, priceProvider, pricing, account) => {
     let totalSupply = await pool.totalSupply();
     let balanceOfAccount = await pool.balanceOf(account);
     let tokens = await pool.getCurrentTokens();
@@ -204,13 +205,14 @@ const getStateOfPool = async (pool, pricing, account) => {
     let etherWeight = await pool.getNormalizedWeight(ether);
     let daiWeight = await pool.getNormalizedWeight(dai);
     let params = await pool.getParameters();
-    let weights = await pricing.weights(params.s, params.k, params.o, params.t);
+    let spot = await priceProvider.getAssetPrice(ether);
+    let weights = await pricing.weights(spot, params.k, params.o, params.t);
     let elasticity = weights.riskyW;
-    let optionCallPrice = await pricing.getCallPrice(params.s, params.k, params.o, params.t);
-    let optionPutPrice = await pricing.getPutPrice(params.s, params.k, params.o, params.t);
+    let optionCallPrice = await pricing.getCallPrice(spot, params.k, params.o, params.t);
+    let optionPutPrice = await pricing.getPutPrice(spot, params.k, params.o, params.t);
     let riskFreePerPoolShare = daiBalance.mul(parseEther("1")).div(totalSupply);
     let riskyPerPoolShare = etherBalance.mul(parseEther("1")).div(totalSupply);
-    let riskyValuePerPoolShare = riskyPerPoolShare.mul(params.s).div(parseEther("1"));
+    let riskyValuePerPoolShare = riskyPerPoolShare.mul(spot).div(parseEther("1"));
     let totalPoolValuePerShare = riskyValuePerPoolShare.add(riskFreePerPoolShare);
 
     let state = {
@@ -230,7 +232,81 @@ const getStateOfPool = async (pool, pricing, account) => {
     return state;
 };
 
+const getRawStateOfPool = async (pool, priceProvider, pricing, account) => {
+    let totalSupply = await pool.totalSupply();
+    let balanceOfAccount = await pool.balanceOf(account);
+    let tokens = await pool.getCurrentTokens();
+    let ether = tokens[0];
+    let dai = tokens[1];
+    let etherBalance = await pool.getBalance(ether);
+    let daiBalance = await pool.getBalance(dai);
+    let etherWeight = await pool.getNormalizedWeight(ether);
+    let daiWeight = await pool.getNormalizedWeight(dai);
+    let params = await pool.getParameters();
+    let spot = await priceProvider.getAssetPrice(ether);
+    let weights = await pricing.weights(spot, params.k, params.o, params.t);
+    let elasticity = weights.riskyW;
+    let optionCallPrice = await pricing.getCallPrice(spot, params.k, params.o, params.t);
+    let optionPutPrice = await pricing.getPutPrice(spot, params.k, params.o, params.t);
+    let riskFreePerPoolShare = daiBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyPerPoolShare = etherBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyValuePerPoolShare = riskyPerPoolShare.mul(spot).div(parseEther("1"));
+    let totalPoolValuePerShare = riskyValuePerPoolShare.add(riskFreePerPoolShare);
+
+    let state = {
+        elasticity: elasticity,
+        poolSupply: totalSupply,
+        lpTokenBal: balanceOfAccount,
+        poolRiskyBal: etherBalance,
+        poolRiskFreeBal: daiBalance,
+        poolRiskyWeight: etherWeight,
+        poolRiskFreeWeight: daiWeight,
+        optionCallPrice: optionCallPrice,
+        optionPutPrice: optionPutPrice,
+        riskyPerPoolShare: riskyPerPoolShare,
+        riskFreePerPoolShare: riskFreePerPoolShare,
+        totalPoolValuePerShare: totalPoolValuePerShare,
+    };
+    return state;
+};
+
+const getStateChangeOfPool = async (oldState, currentState) => {
+    let stateChange = {
+        elasticity: currentState.elasticity.sub(oldState.elasticity),
+        poolSupply: currentState.poolSupply.sub(oldState.poolSupply),
+        lpTokenBal: currentState.lpTokenBal.sub(oldState.lpTokenBal),
+        poolRiskyBal: currentState.poolRiskyBal.sub(oldState.poolRiskyBal),
+        poolRiskFreeBal: currentState.poolRiskFreeBal.sub(oldState.poolRiskFreeBal),
+        poolRiskyWeight: currentState.poolRiskyWeight.sub(oldState.poolRiskyWeight),
+        poolRiskFreeWeight: currentState.poolRiskFreeWeight.sub(oldState.poolRiskFreeWeight),
+        optionCallPrice: currentState.optionCallPrice.sub(oldState.optionCallPrice),
+        optionPutPrice: currentState.optionPutPrice.sub(oldState.optionPutPrice),
+        riskyPerPoolShare: currentState.riskyPerPoolShare.sub(oldState.riskyPerPoolShare),
+        riskFreePerPoolShare: currentState.riskFreePerPoolShare.sub(oldState.riskFreePerPoolShare),
+        totalPoolValuePerShare: currentState.totalPoolValuePerShare.sub(
+            oldState.totalPoolValuePerShare
+        ),
+    };
+    change = {
+        elasticity: formatEther(stateChange.elasticity),
+        poolSupply: formatEther(stateChange.poolSupply),
+        lpTokenBal: formatEther(stateChange.lpTokenBal),
+        poolRiskyBal: formatEther(stateChange.poolRiskyBal),
+        poolRiskFreeBal: formatEther(stateChange.poolRiskFreeBal),
+        poolRiskyWeight: formatEther(stateChange.poolRiskyWeight),
+        poolRiskFreeWeight: formatEther(stateChange.poolRiskFreeWeight),
+        optionCallPrice: formatEther(stateChange.optionCallPrice),
+        optionPutPrice: formatEther(stateChange.optionPutPrice),
+        riskyPerPoolShare: formatEther(stateChange.riskyPerPoolShare),
+        riskFreePerPoolShare: formatEther(stateChange.riskFreePerPoolShare),
+        totalPoolValuePerShare: formatEther(stateChange.totalPoolValuePerShare),
+    };
+    return change;
+};
+
 Object.assign(module.exports, {
+    getRawStateOfPool,
+    getStateChangeOfPool,
     getStateOfPool,
     setupTokens,
     setupMultipleContracts,

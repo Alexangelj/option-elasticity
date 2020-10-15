@@ -3,6 +3,7 @@ const { parseEther } = bre.ethers.utils;
 const BFactory = require("../balancer-core/build/contracts/BFactory.json");
 const BPool = require("../balancer-core/build/contracts/BPool.json");
 const { formatEther } = require("ethers/lib/utils");
+const { setupOptionProtocol } = require("./setup");
 const ethers = bre.ethers;
 
 const newWallets = async () => {
@@ -41,8 +42,7 @@ describe("Pricing Contract", () => {
         t = 31449600; //one year
 
         // get balancer factory
-        const _factory = await ethers.getContractFactory(BFactory.abi, BFactory.bytecode, Admin);
-        factory = await _factory.deploy();
+        factory = await setupOptionProtocol(Admin);
 
         // get primitive wrapper
         const _pfi = await ethers.getContractFactory("PFactory");

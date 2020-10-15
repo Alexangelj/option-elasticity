@@ -4,6 +4,7 @@ const chai = require("chai");
 const { solidity } = require("ethereum-waffle");
 chai.use(solidity);
 const { parseEther } = bre.ethers.utils;
+const setup = require("./setup.js");
 const {
     setupTokens,
     setupMultipleContracts,
@@ -16,7 +17,7 @@ const {
     getMultipleBalances,
     setupDebtToken,
     getStateOfPool,
-} = require("./setup.js");
+} = setup;
 
 const ethers = bre.ethers;
 
@@ -85,18 +86,24 @@ describe("OptionPool.sol", () => {
 
     describe("joinPool", () => {
         it("should join the pool", async () => {
-            let state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+            let state1 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
             await pool.joinPool(parseEther("1"), [parseEther("10000"), parseEther("100000")]);
-            state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+            let state2 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            let stateChange = await setup.getStateChangeOfPool(state1, state2);
+            console.log("initial state then join with 1", stateChange);
+
+            let state5 = await setup.getStateOfPool(pool, priceProvider, pricing, Alice);
+            console.log(state5);
 
             await priceProvider.setTestPrice(parseEther("103"));
-            state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+
+            let state3 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
             await pool.joinPool(parseEther("1"), [parseEther("10000"), parseEther("100000")]);
-            state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+            let state4 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            let stateChange2 = await setup.getStateChangeOfPool(state3, state4);
+            console.log("change asset spot price to 103 then add 1", stateChange2);
+            let stateChange3 = await setup.getStateChangeOfPool(state1, state4);
+            console.log("big change", stateChange3);
         });
     });
 });

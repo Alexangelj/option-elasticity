@@ -36,16 +36,33 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         address indexed oldTokenBinder,
         address indexed newTokenBinder
     );
+    event CalibrationUpdated(
+        uint256 beginBlock,
+        uint256[] beginWeights,
+        uint256 finalBlock,
+        uint256[] finalWeights
+    );
     event LOG_JOIN(address indexed caller, address indexed tokenIn, uint256 tokenAmountIn);
-
     event LOG_EXIT(address indexed caller, address indexed tokenOut, uint256 tokenAmountOut);
 
+    /**
+     OptionPool is the core pool which handles token weight and balance logic.
+     Controller is a smart contract or EOA which can change the controller -> effectively the admin.
+     TokenBinder is responsible for calling the `bind` and `rebind` functions to change the weights of the core pool.
+     */
     struct Controllers {
         IBPool optionPool;
         address controller;
         address tokenBinder;
     }
 
+    /**
+     These are the option specific parameters which are used to calibrate the core pool.
+     Spot: underlying asset spot price (from oracle).
+     Strike: the strike price for the option.
+     Vol: The implied volatility.
+     Expiry: The expiration date of the option.
+     */
     struct Parameters {
         uint256 spot;
         uint256 strike;
@@ -53,15 +70,44 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         uint256 expiry;
     }
 
+    /**
+     The asset which the option is on, and an asset that the strike is paid in.
+     Should be an asset<>stablecoin pair.
+     */
     struct Assets {
         address underlyingToken;
         address quoteToken;
     }
 
+    /**
+     The time-sensitive attributes for weight update handling.
+     */
+    struct Calibration {
+        uint256 beginBlock; // Block to begin a weight update.
+        uint256 finalBlock; // Block to end a weight update.
+        uint256[] beginWeights; // Weight array for tokens to start update from.
+        uint256[] finalWeights; // Desired final weights for tokens to end at.
+        uint256 lastFee; // The previously set fee to offset the expected next weight change arbitrage.
+    }
+
+    // The struct of controlling addresses and core pool.
     Controllers public controllers;
+
+    // The option parameters to calibrate the core pool to.
     Parameters public parameters;
+
+    // The underlying asset of the option and a risk-free (stablecoin) asset.
     Assets public assets;
+
+    // The Primitive oracle aggregation contract to grab any (supported) underlying price.
     IProxyPriceProvider public priceProvider;
+
+    // The weight calibration over time.
+    Calibration public calibration;
+
+    uint256 public constant MAX_TOTAL_WEIGHT = 10**18 * 25;
+    uint256 public constant MAX_WEIGHT = 10**18 * 25;
+    uint256 public constant MIN_WEIGHT = 10**18;
 
     // Modifiers
 
@@ -75,8 +121,11 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _;
     }
 
-    // Pseudo constructor
+    /* ==== Pseudo Constructor ==== */
 
+    /**
+     * @dev Called by a factory immediately after deployment, in the same transaction.
+     */
     function initialize(
         address optionPool_,
         address priceProvider_,
@@ -115,7 +164,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _initializeWeights();
     }
 
-    // Controller functions
+    /* ==== Governance Functions ===== */
 
     function setController(address newController) external onlyController nonReentrant {
         emit ControllerUpdated(msg.sender, controllers.controller, newController);
@@ -127,7 +176,205 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         controllers.tokenBinder = newTokenBinder;
     }
 
-    // Binding functions
+    /* ==== Weight Business Logic Functions ==== */
+
+    /**
+     * @dev Handles logic for updating weights in pool by manipulating token and LP token balances.
+     * @notice Requires tokens to be pulled, either pool tokens or LP tokens.
+     * @param token_ The address of the token to update the weight for.
+     * @param updatedWeight The desired weight to change the current weight for `token_` to.
+     */
+    function updateWeight(address token_, uint256 updatedWeight) external {
+        _checkValidWeight(updatedWeight);
+        IBPool optionPool_ = optionPool();
+
+        uint256 balance = optionPool_.getBalance(token_);
+        uint256 totalWeight = optionPool_.getTotalDenormalizedWeight();
+        uint256 weight = optionPool_.getDenormalizedWeight(token_);
+        if (updatedWeight < weight) {
+            _moveWeightDown(optionPool_, token_, updatedWeight, weight, balance, totalWeight);
+        } else {
+            _moveWeightUp(optionPool_, token_, updatedWeight, weight, balance, totalWeight);
+        }
+    }
+
+    /**
+     * @dev Changes weight to updatedWeight by reducing, pushes tokens and burns LP tokens.
+     */
+    function _moveWeightDown(
+        IBPool optionPool_,
+        address token_,
+        uint256 updatedWeight,
+        uint256 weight,
+        uint256 balance,
+        uint256 totalWeight
+    ) internal {
+        uint256 totalSupply_ = totalSupply;
+        require(
+            totalWeight.add(weight.sub(updatedWeight)) <= MAX_TOTAL_WEIGHT,
+            "ERR_MAX_TOTAL_WEIGHT"
+        );
+
+        uint256 absoluteWeightChange = weight.sub(updatedWeight);
+        uint256 absoluteBalanceChange = balance.mul(absoluteWeightChange.div(weight));
+        uint256 poolAmountIn = totalSupply_.mul(absoluteWeightChange.div(totalWeight));
+
+        require(balance.sub(absoluteBalanceChange) >= 10**5, "ERR_MIN_BALANCE");
+        optionPool_.rebind(token_, balance.sub(absoluteBalanceChange), updatedWeight);
+
+        IERC20(token_).safeTransfer(msg.sender, absoluteBalanceChange);
+        calibration.beginBlock = 0;
+        _burnPoolShare(poolAmountIn);
+    }
+
+    /**
+     * @dev Changes weight to updatedWeight by increasing, pulls tokens and mints LP tokens.
+     */
+    function _moveWeightUp(
+        IBPool optionPool_,
+        address token_,
+        uint256 updatedWeight,
+        uint256 weight,
+        uint256 balance,
+        uint256 totalWeight
+    ) internal {
+        uint256 totalSupply_ = totalSupply;
+        require(
+            totalWeight.add(weight.sub(updatedWeight)) <= MAX_TOTAL_WEIGHT,
+            "ERR_MAX_TOTAL_WEIGHT"
+        );
+
+        uint256 absoluteWeightChange = updatedWeight.sub(weight);
+        uint256 absoluteBalanceChange = balance.mul(absoluteWeightChange.div(weight));
+        uint256 poolAmountOut = totalSupply_.mul(absoluteWeightChange.div(totalWeight));
+
+        IERC20(token_).safeTransferFrom(msg.sender, address(this), absoluteBalanceChange);
+
+        optionPool_.rebind(token_, balance.add(absoluteBalanceChange), updatedWeight);
+        calibration.beginBlock = 0;
+        _mintPoolShare(poolAmountOut);
+        _pushPoolShare(msg.sender, poolAmountOut);
+    }
+
+    /**
+     * @dev Updates Calibration struct storage with a time period and weight target.
+     */
+    function targetWeightsOverTime(
+        uint256[] calldata finalWeightsArray,
+        uint256 beginBlock,
+        uint256 finalBlock
+    ) external {
+        require(finalBlock > beginBlock, "ERR_FINAL_BLOCK_BEFORE");
+        IBPool optionPool_ = optionPool();
+
+        // Check final weights array for valid weights and sum.
+        uint256 weightsTotalSum = 0;
+        address[] memory tokens = optionPool_.getCurrentTokens();
+        uint256 tokensLength = tokens.length;
+        for (uint256 i = 0; i < tokensLength; i++) {
+            _checkValidWeight(finalWeightsArray[i]);
+            weightsTotalSum = weightsTotalSum.add(finalWeightsArray[i]);
+        }
+        require(weightsTotalSum <= MAX_TOTAL_WEIGHT, "ERR_MAX_TOTAL_WEIGHT");
+        // Start targeting the final weights at this block.
+        uint256 actualBeginBlock;
+        if (block.number > beginBlock) {
+            actualBeginBlock = block.number;
+        } else {
+            actualBeginBlock = beginBlock;
+        }
+        // Get the current denormalized weights array.
+        uint256[] memory beginWeightsArray = new uint256[](tokensLength);
+        for (uint256 i = 0; i < tokensLength; i++) {
+            beginWeightsArray[i] = optionPool_.getDenormalizedWeight(tokens[i]);
+        }
+        // Update calibration state with new values.
+        _setCalibration(beginWeightsArray, finalWeightsArray, actualBeginBlock, finalBlock);
+    }
+
+    /**
+     * @dev Internal function that reverts if a weight is out of bounds.
+     */
+    function _checkValidWeight(uint256 weight) internal pure {
+        require(weight <= MAX_WEIGHT, "ERR_MAX_WEIGHT");
+        require(weight >= MIN_WEIGHT, "ERR_MIN_WEIGHT");
+    }
+
+    /**
+     * @dev Internal function to update Calibration struct state.
+     */
+    function _setCalibration(
+        uint256[] memory beginWeightsArray,
+        uint256[] memory finalWeightsArray,
+        uint256 beginBlock,
+        uint256 finalBlock
+    ) internal {
+        calibration.beginBlock = beginBlock;
+        calibration.finalBlock = finalBlock;
+        delete calibration.beginWeights;
+        calibration.beginWeights = beginWeightsArray;
+        calibration.finalWeights = finalWeightsArray;
+        emit CalibrationUpdated(beginBlock, beginWeightsArray, finalBlock, finalWeightsArray);
+    }
+
+    /**
+     * @dev Forces a weight change to take place using Calibration to calculate the weightDeltaOverTime.
+     */
+    function adjustWeightsToTargets() external {
+        IBPool optionPool_ = optionPool();
+        Calibration memory memoryCalibration = calibration;
+
+        require(memoryCalibration.beginBlock != 0, "ERR_WEIGHT_TARGET_FINISHED");
+        require(block.number >= memoryCalibration.beginBlock, "ERR_ADJUST_NEXT_BLOCK");
+
+        uint256 currentBlock;
+        if (block.number > memoryCalibration.finalBlock) {
+            currentBlock = memoryCalibration.finalBlock;
+        } else {
+            currentBlock = block.number;
+        }
+
+        uint256 absoluteBlockPeriod = memoryCalibration.finalBlock.sub(
+            memoryCalibration.beginBlock
+        );
+        uint256 updatedWeight;
+        uint256 absoluteWeightChange;
+        uint256 absoluteWeightChangeOverBlockPeriod;
+
+        // Rebind each token with a weight closer to the target weights wrt block time.
+        address[] memory tokens = optionPool_.getCurrentTokens();
+        uint256 tokensLength = tokens.length;
+        for (uint256 i = 0; i < tokensLength; i++) {
+            uint256 beginWeight = memoryCalibration.beginWeights[i];
+            uint256 finalWeight = memoryCalibration.finalWeights[i];
+            if (beginWeight >= finalWeight) {
+                absoluteWeightChange = beginWeight.sub(finalWeight);
+                absoluteWeightChangeOverBlockPeriod = absoluteWeightChange.div(
+                    absoluteBlockPeriod
+                );
+                updatedWeight = beginWeight.sub(
+                    (currentBlock.sub(memoryCalibration.beginBlock)).mul(
+                        absoluteWeightChangeOverBlockPeriod
+                    )
+                );
+            } else {
+                absoluteWeightChange = finalWeight.sub(beginWeight);
+                updatedWeight = beginWeight.add(
+                    (currentBlock.sub(memoryCalibration.beginBlock)).mul(
+                        absoluteWeightChangeOverBlockPeriod
+                    )
+                );
+            }
+
+            optionPool_.rebind(tokens[i], optionPool_.getBalance(tokens[i]), updatedWeight);
+        }
+
+        if (currentBlock == memoryCalibration.finalBlock) {
+            calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert.
+        }
+    }
+
+    /* ==== Token Binding Functions ==== */
 
     function getAmounts(uint256 riskyWeight, uint256 riskFreeWeight)
         public
@@ -135,12 +382,19 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         returns (uint256 riskyAmount, uint256 riskFreeAmount)
     {
         Parameters memory params = parameters;
-        uint256 callValue = Pricing.getCall(params.spot, params.strike, params.vol, params.expiry);
+        uint256 totalSupply_ = totalSupply;
         address underlying = assets.underlyingToken;
         uint256 riskFreePrice = priceProvider.getAssetPrice(underlying); //
+        uint256 callValue = Pricing.getCall(
+            riskFreePrice,
+            params.strike,
+            params.vol,
+            params.expiry
+        );
+        uint256 totalValue = callValue.mul(totalSupply_).div(1 ether);
         // If callValue is 1, and risky asset is worth 100, for a 50:50 pool, deposit 0.05 risky and 0.5 riskfree.
-        riskyAmount = callValue.mul(riskyWeight).div(riskFreePrice);
-        riskFreeAmount = callValue.mul(riskFreeWeight).div(1 ether);
+        riskyAmount = totalValue.mul(riskyWeight).div(riskFreePrice);
+        riskFreeAmount = totalValue.mul(riskFreeWeight).div(1 ether);
     }
 
     function _initializeWeights() internal {
@@ -176,6 +430,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _rebind(address(tokens[1]), riskFreeAmount, riskFreeWeight.mul(25)); // bone == 50, 25 == half
     }
 
+    /**
+     * @dev A public function for the tokenBinder entity to call.
+     */
     function bind(
         address token_,
         uint256 balance,
@@ -184,18 +441,36 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _bind(token_, balance, denorm);
     }
 
+    /**
+     * @dev Adds a token to the pool with a balance and weight.
+     * @param token_ The address of the token to bind.
+     * @param balance The quantity of token to add to the pool.
+     * @param denorm The denormalized weight of the token in the pool.
+     */
     function _bind(
         address token_,
         uint256 balance,
         uint256 denorm
     ) internal nonReentrant {
+        // Store in memory for gas savings.
         IBPool optionPool_ = optionPool();
         IERC20 token = IERC20(token_);
+
+        // Transfer the `balance` into this contract, then approve it to be pulled by the optionPool.
         token.safeTransferFrom(msg.sender, address(this), balance);
         token.approve(address(optionPool_), uint256(-1));
+
+        // Core pool will pull the `balance` of token from this contract into the pool.
+        // Core pool will also make a state change: update the `_records` mapping with a new record.
         optionPool_.bind(token_, balance, denorm);
     }
 
+    /**
+     * @dev Updates the weights of a token with a new weight and added balance.
+     * @param token_ The address of the token, which will update the mapped record in the core pool.
+     * @param balance The quantity of tokens to correlate the denormalized weight to.
+     * @param denorm The denormalized weight of the `token_`.
+     */
     function rebind(
         address token_,
         uint256 balance,
@@ -211,50 +486,55 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     ) internal {
         IBPool optionPool_ = optionPool();
         IERC20 token = IERC20(token_);
-
+        // Forces token record to have a balance equal to the actual token balance of the core pool.
         optionPool_.gulp(token_);
-
+        // Transfer tokens into this contract equal to the difference of `balance` and actual core pool balance.
         uint256 previousBalance = token.balanceOf(address(optionPool_));
-
         if (balance > previousBalance) {
             token.safeTransferFrom(msg.sender, address(this), balance.sub(previousBalance));
             token.approve(address(optionPool_), uint256(-1));
         }
 
+        // Updates the weight of the `token_`, which will pull in the required tokens necessary to update balance.
         optionPool_.rebind(token_, balance, denorm);
-
-        uint256 tokenBalance = token.balanceOf(address(this));
-        if (tokenBalance > 0) {
-            token.safeTransfer(msg.sender, tokenBalance);
-        }
+        // If tokens remain in this contract, refund them back to `msg.sender`.
+        _pushRemainder(token);
     }
 
     function unbind(address token_) external onlyBinder nonReentrant {
         IBPool optionPool_ = optionPool();
         IERC20 token = IERC20(token_);
-
+        // Remove a token from a pool by clearing its record.
         optionPool_.unbind(token_);
+        _pushRemainder(token);
+    }
 
+    function _pushRemainder(IERC20 token) internal {
         uint256 tokenBalance = token.balanceOf(address(this));
         if (tokenBalance > 0) {
             token.safeTransfer(msg.sender, tokenBalance);
         }
     }
 
-    // Pool Share Functions
+    /* ==== Liquidity Provision Functions ==== */
 
+    /**
+     * @dev Mints LP tokens proportional to the deposited pool tokens with respect to total pool tokens.
+     * @param poolAmountOut The quantity of LP tokens to be minted.
+     * @param maxAmountsIn The highest quantity of pool tokens that can be pulled from `msg.sender`.
+     */
     function joinPool(uint256 poolAmountOut, uint256[] calldata maxAmountsIn)
         external
         nonReentrant
     {
         uint256 poolTotal = totalSupply;
-        uint256 ratio = BNum.bdiv(poolAmountOut, poolTotal);
+        uint256 ratio = BNum.bdiv(poolAmountOut, poolTotal); // Proportion of LP token / total LP tokens
         require(ratio != 0, "ERR_MATH_APPROX");
 
         IBPool optionPool_ = optionPool();
         address[] memory tokens = optionPool_.getCurrentTokens();
         uint256 tokensLength = tokens.length;
-
+        // Pull pool tokens that are needed to mint the desired amount of LP tokens.
         for (uint256 i = 0; i < tokensLength; i++) {
             address t = tokens[i];
             uint256 bal = optionPool_.getBalance(t);
@@ -268,21 +548,26 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _pushPoolShare(msg.sender, poolAmountOut);
     }
 
+    /**
+     * @dev Unwraps LP tokens for their proportional claim on the pool's tokens.
+     * @param poolAmountIn The quantity of LP tokens to unwrap.
+     * @param minAmountsOut The minimum quantity of pool tokens to receive in exchange for LP tokens unwrapped.
+     */
     function exitPool(uint256 poolAmountIn, uint256[] calldata minAmountsOut)
         external
         nonReentrant
     {
         uint256 poolTotal = totalSupply;
-        uint256 ratio = BNum.bdiv(poolAmountIn, poolTotal);
+        uint256 ratio = BNum.bdiv(poolAmountIn, poolTotal); // Proportion of LP token / total LP tokens
         require(ratio != 0, "ERR_MATH_APPROX");
 
-        _pullPoolShare(msg.sender, poolAmountIn);
-        _burnPoolShare(poolAmountIn);
+        _pullPoolShare(msg.sender, poolAmountIn); // Transfer LP tokens into this contract.
+        _burnPoolShare(poolAmountIn); // Burn LP tokens from this contract.
 
         IBPool optionPool_ = optionPool();
         address[] memory tokens = optionPool_.getCurrentTokens();
         uint256 tokensLength = tokens.length;
-
+        // Push pool tokens out to `msg.sender` as long as they are above min. tokens desired.
         for (uint256 i = 0; i < tokensLength; i++) {
             address t = tokens[i];
             uint256 bal = optionPool_.getBalance(t);
@@ -294,16 +579,24 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         }
     }
 
-    // Single Entry and Exit Functions
+    /* ==== Pool Single Token Entry and Exit Functions ==== */
 
+    /**
+     * @dev Mints LP tokens by depositing a single token.
+     * @param tokenIn The address of the token to deposit into the core pool.
+     * @param tokenAmountIn The quantity of the token to deposit into the core pool.
+     * @param minPoolAmountOut The minimum quantity of LP tokens to mint. Revert if less than.
+     */
     function joinswapExternAmountIn(
         address tokenIn,
         uint256 tokenAmountIn,
         uint256 minPoolAmountOut
     ) external nonReentrant returns (uint256 poolAmountOut) {
         IBPool optionPool_ = optionPool();
+        // Fail early if token is not one of the bound pool tokens.
         require(optionPool_.isBound(tokenIn), "ERR_NOT_BOUND");
 
+        // Calculates the quantity of LP tokens to mint based on a single token deposit.
         poolAmountOut = optionPool_.calcPoolOutGivenSingleIn(
             optionPool_.getBalance(tokenIn),
             optionPool_.getDenormalizedWeight(tokenIn),
@@ -312,20 +605,21 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             tokenAmountIn,
             optionPool_.getSwapFee()
         );
-
         require(poolAmountOut >= minPoolAmountOut, "ERR_LIMIT_OUT");
 
+        // Mint the LP tokens and transfer them out to the `msg.sender`.
         emit LOG_JOIN(msg.sender, tokenIn, tokenAmountIn);
-
         _mintPoolShare(poolAmountOut);
         _pushPoolShare(msg.sender, poolAmountOut);
+
+        // Pull the `tokenIn` from the `msg.sender` into the core pool.
+        // Warning: updates state of the core pool with a call to update weights.
         uint256 totalBalance = optionPool_.getBalance(tokenIn);
         _pullUnderlying(tokenIn, msg.sender, tokenAmountIn, totalBalance);
-
         return poolAmountOut;
     }
 
-    // Accounting functions
+    /* ==== Token Balance Transfer Functions ==== */
 
     function _pushUnderlying(
         address token,
@@ -372,7 +666,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _burn(address(this), quantity);
     }
 
-    // View functions
+    /* ==== View Functions ==== */
 
     function getDenormalizedWeight(address token_) external view returns (uint256) {
         return optionPool().getDenormalizedWeight(token_);
