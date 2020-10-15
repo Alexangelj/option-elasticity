@@ -121,6 +121,11 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _;
     }
 
+    modifier canAdjust {
+        canAdjustToTarget();
+        _;
+    }
+
     /* ==== Pseudo Constructor ==== */
 
     /**
@@ -199,6 +204,195 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     }
 
     /**
+     * @dev Updates Calibration struct storage with a time period and weight target.
+     */
+    function targetWeightsOverTime(
+        uint256[] calldata finalWeightsArray,
+        uint256 beginBlock,
+        uint256 finalBlock
+    ) external {
+        require(finalBlock > beginBlock, "ERR_FINAL_BLOCK_BEFORE");
+        IBPool optionPool_ = optionPool();
+
+        // Check final weights array for valid weights and sum.
+        uint256 weightsTotalSum = 0;
+        address[] memory tokens = optionPool_.getCurrentTokens();
+        uint256 tokensLength = tokens.length;
+        for (uint256 i = 0; i < tokensLength; i++) {
+            _checkValidWeight(finalWeightsArray[i]);
+            weightsTotalSum = weightsTotalSum.add(finalWeightsArray[i]);
+        }
+        require(weightsTotalSum <= MAX_TOTAL_WEIGHT, "ERR_MAX_TOTAL_WEIGHT");
+        // Start targeting the final weights at this block if beginBlock has been passed.
+        uint256 actualBeginBlock;
+        if (block.number > beginBlock) {
+            actualBeginBlock = block.number;
+        } else {
+            actualBeginBlock = beginBlock;
+        }
+        // Get the current denormalized weights array.
+        uint256[] memory beginWeightsArray = new uint256[](tokensLength);
+        for (uint256 i = 0; i < tokensLength; i++) {
+            beginWeightsArray[i] = optionPool_.getDenormalizedWeight(tokens[i]);
+        }
+        // Update calibration state with new values.
+        _setCalibration(beginWeightsArray, finalWeightsArray, actualBeginBlock, finalBlock);
+    }
+
+    function canAdjustToTarget() public view returns (bool) {
+        Calibration memory memCalibration = calibration;
+        require(memCalibration.beginBlock != 0, "ERR_WEIGHT_TARGET_FINISHED");
+        require(block.number >= memCalibration.beginBlock, "ERR_ADJUST_NEXT_BLOCK");
+        return true;
+    }
+
+    function _increaseWeightToTarget(address targetToken) internal canAdjust {
+        IBPool optionPool_ = optionPool();
+        Calibration memory memCalibration = calibration;
+
+        address[] memory tokens = optionPool_.getCurrentTokens();
+        uint256 tokensLength = tokens.length;
+        uint256 targetTokenIndex;
+        for (uint256 i = 0; i < tokensLength; i++) {
+            if (tokens[i] == targetToken) {
+                targetTokenIndex = i;
+            }
+        }
+
+        uint256 currentBlock = block.number > memCalibration.finalBlock
+            ? memCalibration.finalBlock
+            : block.number;
+        uint256 updatedWeight = _calculateWeightIncreaseToTarget(
+            currentBlock,
+            memCalibration.beginBlock,
+            memCalibration.finalBlock,
+            memCalibration.beginWeights[targetTokenIndex],
+            memCalibration.finalWeights[targetTokenIndex]
+        );
+
+        optionPool_.rebind(targetToken, optionPool_.getBalance(targetToken), updatedWeight);
+
+        if (currentBlock == memCalibration.finalBlock) {
+            calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert next called.
+        }
+    }
+
+    function _decreaseWeightToTarget(address targetToken) internal canAdjust {
+        IBPool optionPool_ = optionPool();
+        Calibration memory memCalibration = calibration;
+
+        address[] memory tokens = optionPool_.getCurrentTokens();
+        uint256 tokensLength = tokens.length;
+        uint256 targetTokenIndex;
+        for (uint256 i = 0; i < tokensLength; i++) {
+            if (tokens[i] == targetToken) {
+                targetTokenIndex = i;
+            }
+        }
+
+        uint256 currentBlock = block.number > memCalibration.finalBlock
+            ? memCalibration.finalBlock
+            : block.number;
+        uint256 updatedWeight = _calculateWeightIncreaseToTarget(
+            currentBlock,
+            memCalibration.beginBlock,
+            memCalibration.finalBlock,
+            memCalibration.beginWeights[targetTokenIndex],
+            memCalibration.finalWeights[targetTokenIndex]
+        );
+
+        optionPool_.rebind(targetToken, optionPool_.getBalance(targetToken), updatedWeight);
+
+        if (currentBlock == memCalibration.finalBlock) {
+            calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert next called.
+        }
+    }
+
+    function _calculateWeightIncreaseToTarget(
+        uint256 currentBlock,
+        uint256 beginBlock,
+        uint256 finalBlock,
+        uint256 beginWeight,
+        uint256 finalWeight
+    ) internal pure returns (uint256) {
+        require(finalWeight > beginWeight, "ERR_CANNOT_INCREASE");
+        uint256 currentBlockDelta = currentBlock.sub(beginBlock);
+        uint256 totalBlocks = finalBlock.sub(beginBlock);
+        uint256 totalWeightChange = finalWeight.sub(beginWeight);
+        uint256 weightChangePerBlock = totalWeightChange.div(totalBlocks);
+        uint256 updatedWeight = beginWeight.add(currentBlockDelta.mul(weightChangePerBlock));
+        return updatedWeight;
+    }
+
+    function _calculateWeightDecreaseToTarget(
+        uint256 currentBlock,
+        uint256 beginBlock,
+        uint256 finalBlock,
+        uint256 beginWeight,
+        uint256 finalWeight
+    ) internal pure returns (uint256) {
+        require(beginWeight >= finalWeight, "ERR_CANNOT_DECREASE");
+        uint256 currentBlockDelta = currentBlock.sub(beginBlock);
+        uint256 totalBlocks = finalBlock.sub(beginBlock);
+        uint256 totalWeightChange = beginWeight.sub(finalWeight);
+        uint256 weightChangePerBlock = totalWeightChange.div(totalBlocks);
+        uint256 updatedWeight = beginWeight.sub(currentBlockDelta.mul(weightChangePerBlock));
+        return updatedWeight;
+    }
+
+    /**
+     * @dev Forces a weight change to take place using Calibration to calculate the weightDeltaOverTime.
+     */
+    function adjustWeightsToTargets() external canAdjust {
+        IBPool optionPool_ = optionPool();
+        Calibration memory memCalibration = calibration;
+
+        uint256 updatedWeight;
+        uint256 currentBlock = block.number > memCalibration.finalBlock
+            ? memCalibration.finalBlock
+            : block.number;
+
+        // Rebind each token with a weight closer to the target weights wrt block time.
+        address[] memory tokens = optionPool_.getCurrentTokens();
+        uint256 tokensLength = tokens.length;
+        for (uint256 i = 0; i < tokensLength; i++) {
+            uint256 beginWeight = memCalibration.beginWeights[i];
+            uint256 finalWeight = memCalibration.finalWeights[i];
+            if (beginWeight >= finalWeight) {
+                updatedWeight = _calculateWeightDecreaseToTarget(
+                    currentBlock,
+                    memCalibration.beginBlock,
+                    memCalibration.finalBlock,
+                    beginWeight,
+                    finalWeight
+                );
+            } else {
+                updatedWeight = _calculateWeightIncreaseToTarget(
+                    currentBlock,
+                    memCalibration.beginBlock,
+                    memCalibration.finalBlock,
+                    beginWeight,
+                    finalWeight
+                );
+            }
+
+            optionPool_.rebind(tokens[i], optionPool_.getBalance(tokens[i]), updatedWeight);
+        }
+
+        if (currentBlock == memCalibration.finalBlock) {
+            calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert next called.
+        }
+    }
+
+    /**
+     * @dev Internal function that reverts if a weight is out of bounds.
+     */
+    function _checkValidWeight(uint256 weight) internal pure {
+        require(weight <= MAX_WEIGHT, "ERR_MAX_WEIGHT");
+        require(weight >= MIN_WEIGHT, "ERR_MIN_WEIGHT");
+    }
+
+    /**
      * @dev Changes weight to updatedWeight by reducing, pushes tokens and burns LP tokens.
      */
     function _moveWeightDown(
@@ -257,50 +451,6 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     }
 
     /**
-     * @dev Updates Calibration struct storage with a time period and weight target.
-     */
-    function targetWeightsOverTime(
-        uint256[] calldata finalWeightsArray,
-        uint256 beginBlock,
-        uint256 finalBlock
-    ) external {
-        require(finalBlock > beginBlock, "ERR_FINAL_BLOCK_BEFORE");
-        IBPool optionPool_ = optionPool();
-
-        // Check final weights array for valid weights and sum.
-        uint256 weightsTotalSum = 0;
-        address[] memory tokens = optionPool_.getCurrentTokens();
-        uint256 tokensLength = tokens.length;
-        for (uint256 i = 0; i < tokensLength; i++) {
-            _checkValidWeight(finalWeightsArray[i]);
-            weightsTotalSum = weightsTotalSum.add(finalWeightsArray[i]);
-        }
-        require(weightsTotalSum <= MAX_TOTAL_WEIGHT, "ERR_MAX_TOTAL_WEIGHT");
-        // Start targeting the final weights at this block.
-        uint256 actualBeginBlock;
-        if (block.number > beginBlock) {
-            actualBeginBlock = block.number;
-        } else {
-            actualBeginBlock = beginBlock;
-        }
-        // Get the current denormalized weights array.
-        uint256[] memory beginWeightsArray = new uint256[](tokensLength);
-        for (uint256 i = 0; i < tokensLength; i++) {
-            beginWeightsArray[i] = optionPool_.getDenormalizedWeight(tokens[i]);
-        }
-        // Update calibration state with new values.
-        _setCalibration(beginWeightsArray, finalWeightsArray, actualBeginBlock, finalBlock);
-    }
-
-    /**
-     * @dev Internal function that reverts if a weight is out of bounds.
-     */
-    function _checkValidWeight(uint256 weight) internal pure {
-        require(weight <= MAX_WEIGHT, "ERR_MAX_WEIGHT");
-        require(weight >= MIN_WEIGHT, "ERR_MIN_WEIGHT");
-    }
-
-    /**
      * @dev Internal function to update Calibration struct state.
      */
     function _setCalibration(
@@ -311,67 +461,10 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     ) internal {
         calibration.beginBlock = beginBlock;
         calibration.finalBlock = finalBlock;
-        delete calibration.beginWeights;
+        delete calibration.beginWeights; // Clear the beginWeights.
         calibration.beginWeights = beginWeightsArray;
         calibration.finalWeights = finalWeightsArray;
         emit CalibrationUpdated(beginBlock, beginWeightsArray, finalBlock, finalWeightsArray);
-    }
-
-    /**
-     * @dev Forces a weight change to take place using Calibration to calculate the weightDeltaOverTime.
-     */
-    function adjustWeightsToTargets() external {
-        IBPool optionPool_ = optionPool();
-        Calibration memory memoryCalibration = calibration;
-
-        require(memoryCalibration.beginBlock != 0, "ERR_WEIGHT_TARGET_FINISHED");
-        require(block.number >= memoryCalibration.beginBlock, "ERR_ADJUST_NEXT_BLOCK");
-
-        uint256 currentBlock;
-        if (block.number > memoryCalibration.finalBlock) {
-            currentBlock = memoryCalibration.finalBlock;
-        } else {
-            currentBlock = block.number;
-        }
-
-        uint256 absoluteBlockPeriod = memoryCalibration.finalBlock.sub(
-            memoryCalibration.beginBlock
-        );
-        uint256 updatedWeight;
-        uint256 absoluteWeightChange;
-        uint256 absoluteWeightChangeOverBlockPeriod;
-
-        // Rebind each token with a weight closer to the target weights wrt block time.
-        address[] memory tokens = optionPool_.getCurrentTokens();
-        uint256 tokensLength = tokens.length;
-        for (uint256 i = 0; i < tokensLength; i++) {
-            uint256 beginWeight = memoryCalibration.beginWeights[i];
-            uint256 finalWeight = memoryCalibration.finalWeights[i];
-            if (beginWeight >= finalWeight) {
-                absoluteWeightChange = beginWeight.sub(finalWeight);
-                absoluteWeightChangeOverBlockPeriod = absoluteWeightChange.div(
-                    absoluteBlockPeriod
-                );
-                updatedWeight = beginWeight.sub(
-                    (currentBlock.sub(memoryCalibration.beginBlock)).mul(
-                        absoluteWeightChangeOverBlockPeriod
-                    )
-                );
-            } else {
-                absoluteWeightChange = finalWeight.sub(beginWeight);
-                updatedWeight = beginWeight.add(
-                    (currentBlock.sub(memoryCalibration.beginBlock)).mul(
-                        absoluteWeightChangeOverBlockPeriod
-                    )
-                );
-            }
-
-            optionPool_.rebind(tokens[i], optionPool_.getBalance(tokens[i]), updatedWeight);
-        }
-
-        if (currentBlock == memoryCalibration.finalBlock) {
-            calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert.
-        }
     }
 
     /* ==== Token Binding Functions ==== */
