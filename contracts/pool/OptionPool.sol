@@ -44,7 +44,13 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     );
     event LOG_JOIN(address indexed caller, address indexed tokenIn, uint256 tokenAmountIn);
     event LOG_EXIT(address indexed caller, address indexed tokenOut, uint256 tokenAmountOut);
-
+    event LOG_SWAP(
+        address indexed caller,
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 tokenAmountIn,
+        uint256 tokenAmountOut
+    );
     /**
      OptionPool is the core pool which handles token weight and balance logic.
      Controller is a smart contract or EOA which can change the controller -> effectively the admin.
@@ -781,7 +787,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             optionPool_.getSwapFee()
         );
 
-        require(spotPriceAfter >= spotPriceBefore, "ERR_MATH_APPROX");
+        //require(spotPriceAfter >= spotPriceBefore, "ERR_MATH_APPROX");
         require(spotPriceAfter <= maxPrice, "ERR_LIMIT_PRICE");
         console.log(spotPriceBefore, tokenAmountIn, tokenAmountOut, "ERR_MAX_APPROX");
         require(
@@ -789,7 +795,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             "ERR_MATH_APPROX"
         );
 
-        //emit LOG_SWAP(msg.sender, tokenIn, tokenOut, tokenAmountIn, tokenAmountOut);
+        emit LOG_SWAP(msg.sender, tokenIn, tokenOut, tokenAmountIn, tokenAmountOut);
 
         return (tokenAmountOut, spotPriceAfter);
     }

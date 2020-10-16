@@ -114,9 +114,8 @@ class Calibration {
     }
 
     async spot() {
-        return (async () => {
-            return await this.oracle.getAssetPrice(this.tokens[0].address);
-        })();
+        let spot = await this.oracle.getAssetPrice(this.tokens[0].address);
+        return spot;
     }
 }
 

@@ -15,8 +15,16 @@ const formatTableData = require("./lib/logs/formatTableData");
 const table = new BalanceTable({});
 
 describe("OptionPool.sol", () => {
+    let signers, Admin, Alice;
+    let pool, ETHER, DAI;
+    let pricing, oracle;
     const generateReport = async () => {
-        let data = await formatTableData([CONFIG.name], [pool], [ETHER.contract, DAI.contract]);
+        let data = await formatTableData(
+            [CONFIG.name],
+            [pool],
+            [ETHER.contract, DAI.contract, pool],
+            [Alice]
+        );
         Object.assign(data, {
             elasticity: calibration.elasticity,
             callPrice: calibration.callPrice,
@@ -31,8 +39,8 @@ describe("OptionPool.sol", () => {
         Admin = signers[0];
         Alice = Admin._address;
         // Standard erc20s with mint functions.
-        ETHER = new Token("Ethereum", "ETH", parseEther("10000"));
-        DAI = new Token("Dai Stablecoin", "DAI", parseEther("10000"));
+        ETHER = new Token("Ethereum", "ETH", parseEther("100000000"));
+        DAI = new Token("Dai Stablecoin", "DAI", parseEther("100000000"));
         await ETHER.deploy();
         await DAI.deploy();
         // Contracts needed to test and setup test environment.
@@ -42,7 +50,6 @@ describe("OptionPool.sol", () => {
         await oracle.setTestPrice(parseEther("105"));
         // Deploy core pool factory, option controller, and option pool.
         optionFactory = await deployOptionFactory(Admin);
-        console.log(ETHER.address, DAI.address);
         controller = await deployOptionController(optionFactory, ETHER, DAI);
         pool = await deployOptionPool(controller, oracle, ETHER, DAI);
         // Create a new calibration instance.
@@ -68,9 +75,12 @@ describe("OptionPool.sol", () => {
         });
 
         it("should set calibration with a new target weights array", async () => {
-            await oracle.setTestPrice("125");
+            // Set a new spot price then calc a new calibration.
+            await oracle.setTestPrice(parseEther("106"));
             newCalibration = new Calibration(CONFIG, ETHER, DAI);
             await newCalibration.initialize(pricing, oracle, pool);
+
+            // Use the new calibration weights for the target weights.
             let finalWeightsArray = [
                 newCalibration.weights[0].mul(25),
                 newCalibration.weights[1].mul(25),
@@ -80,6 +90,48 @@ describe("OptionPool.sol", () => {
             await expect(
                 pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
             ).to.emit(pool, "CalibrationUpdated");
+        });
+    });
+
+    describe("joinPool", () => {
+        afterEach(async () => {
+            await generateReport();
+        });
+
+        it("should join the pool and mint 100 LP tokens", async () => {
+            let poolAmountOut = parseEther("100");
+            let maxAmountsIn = [parseEther("1000000"), parseEther("1000000")];
+            await expect(pool.joinPool(poolAmountOut, maxAmountsIn)).to.emit(pool, "LOG_JOIN");
+        });
+    });
+
+    describe("swapExactAmountIn", () => {
+        afterEach(async () => {
+            await generateReport();
+        });
+
+        it("should swap tokenIn for tokenOut", async () => {
+            let tokenIn = ETHER.address;
+            let tokenAmountIn = parseEther("5");
+            let tokenOut = DAI.address;
+            let minAmountOut = 0;
+            let maxPrice = parseEther("50000");
+            await expect(
+                pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
+            ).to.emit(pool, "LOG_SWAP");
+        });
+
+        it("should swap tokenIn for tokenOut after some blocks have passed", async () => {
+            let provider = new ethers.providers.JsonRpcProvider();
+            await provider.send("evm_mine");
+            let tokenIn = ETHER.address;
+            let tokenAmountIn = parseEther("5");
+            let tokenOut = DAI.address;
+            let minAmountOut = 0;
+            let maxPrice = parseEther("50000");
+            await expect(
+                pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
+            ).to.emit(pool, "LOG_SWAP");
         });
     });
 });
