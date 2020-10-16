@@ -64,6 +64,7 @@ describe("OptionPool.sol", () => {
         });
 
         it("should bind initial tokens, with initial weights and amounts", async () => {
+            console.log(formatEther(calibration.weights[0]), formatEther(calibration.weights[1]));
             await pool.bind(ETHER.address, calibration.amounts[0], calibration.weights[0].mul(25));
             await pool.bind(DAI.address, calibration.amounts[1], calibration.weights[1].mul(25));
         });
@@ -77,16 +78,17 @@ describe("OptionPool.sol", () => {
         it("should set calibration with a new target weights array", async () => {
             // Set a new spot price then calc a new calibration.
             await oracle.setTestPrice(parseEther("106"));
-            newCalibration = new Calibration(CONFIG, ETHER, DAI);
-            await newCalibration.initialize(pricing, oracle, pool);
+            calibration = new Calibration(CONFIG, ETHER, DAI);
+            await calibration.initialize(pricing, oracle, pool);
 
             // Use the new calibration weights for the target weights.
             let finalWeightsArray = [
-                newCalibration.weights[0].mul(25),
-                newCalibration.weights[1].mul(25),
+                calibration.weights[0].mul(25),
+                calibration.weights[1].mul(25),
             ];
-            let beginBlock = await ethers.getDefaultProvider().getBlockNumber();
-            let finalBlock = beginBlock + 100;
+            let provider = new ethers.providers.JsonRpcProvider();
+            let beginBlock = await provider.send("eth_blockNumber");
+            let finalBlock = beginBlock + 2;
             await expect(
                 pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
             ).to.emit(pool, "CalibrationUpdated");
@@ -129,6 +131,57 @@ describe("OptionPool.sol", () => {
             let tokenOut = DAI.address;
             let minAmountOut = 0;
             let maxPrice = parseEther("50000");
+            await expect(
+                pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
+            ).to.emit(pool, "LOG_SWAP");
+        });
+
+        it("should swap a small quantity of tokens", async () => {
+            let provider = new ethers.providers.JsonRpcProvider();
+            await provider.send("evm_mine");
+            let tokenIn = ETHER.address;
+            let tokenAmountIn = 1000000;
+            let tokenOut = DAI.address;
+            let minAmountOut = 0;
+            let maxPrice = parseEther("50000");
+            pool.on("LOG_SWAP", (caller, tokenIn, tokenOut, tokenAmountIn, tokenAmountOut) => {
+                tokenAmountIn = formatEther(tokenAmountIn);
+                tokenAmountOut = formatEther(tokenAmountOut);
+                console.log("LOG_SWAP: ", {
+                    caller,
+                    tokenIn,
+                    tokenOut,
+                    tokenAmountIn,
+                    tokenAmountOut,
+                });
+            });
+
+            pool.on("LOG_WEIGHT_INCREASE", (beginWeight, updatedWeight, finalWeight) => {
+                weightChange = formatEther(updatedWeight.sub(beginWeight).div(25));
+                beginWeight = formatEther(beginWeight.div(25));
+                updatedWeight = formatEther(updatedWeight.div(25));
+                finalWeight = formatEther(finalWeight.div(25));
+
+                console.log("LOG_WEIGHT_INCREASE: ", {
+                    beginWeight,
+                    updatedWeight,
+                    finalWeight,
+                    weightChange,
+                });
+            });
+
+            pool.on("LOG_WEIGHT_DECREASE", (beginWeight, updatedWeight, finalWeight) => {
+                weightChange = formatEther(updatedWeight.sub(beginWeight).div(25));
+                beginWeight = formatEther(beginWeight.div(25));
+                updatedWeight = formatEther(updatedWeight.div(25));
+                finalWeight = formatEther(finalWeight.div(25));
+                console.log("LOG_WEIGHT_DECREASE: ", {
+                    beginWeight,
+                    updatedWeight,
+                    finalWeight,
+                    weightChange,
+                });
+            });
             await expect(
                 pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
             ).to.emit(pool, "LOG_SWAP");

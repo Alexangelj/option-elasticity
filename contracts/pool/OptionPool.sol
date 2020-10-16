@@ -51,6 +51,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         uint256 tokenAmountIn,
         uint256 tokenAmountOut
     );
+
+    event LOG_WEIGHT_INCREASE(uint256 beginWeight, uint256 updatedWeight, uint256 finalWeight);
+    event LOG_WEIGHT_DECREASE(uint256 beginWeight, uint256 updatedWeight, uint256 finalWeight);
     /**
      OptionPool is the core pool which handles token weight and balance logic.
      Controller is a smart contract or EOA which can change the controller -> effectively the admin.
@@ -268,13 +271,13 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         uint256 currentBlock = block.number > memCalibration.finalBlock
             ? memCalibration.finalBlock
             : block.number;
-
         if (
             memCalibration.beginWeights[targetTokenIndex] >=
             memCalibration.finalWeights[targetTokenIndex]
         ) {
             return;
         }
+
         uint256 updatedWeight = _calculateWeightIncreaseToTarget(
             currentBlock,
             memCalibration.beginBlock,
@@ -284,7 +287,11 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         );
 
         optionPool_.rebind(targetToken, optionPool_.getBalance(targetToken), updatedWeight);
-
+        emit LOG_WEIGHT_INCREASE(
+            memCalibration.beginWeights[targetTokenIndex],
+            updatedWeight,
+            memCalibration.finalWeights[targetTokenIndex]
+        );
         if (currentBlock == memCalibration.finalBlock) {
             calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert next called.
         }
@@ -312,7 +319,8 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         ) {
             return;
         }
-        uint256 updatedWeight = _calculateWeightIncreaseToTarget(
+
+        uint256 updatedWeight = _calculateWeightDecreaseToTarget(
             currentBlock,
             memCalibration.beginBlock,
             memCalibration.finalBlock,
@@ -321,7 +329,11 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         );
 
         optionPool_.rebind(targetToken, optionPool_.getBalance(targetToken), updatedWeight);
-
+        emit LOG_WEIGHT_DECREASE(
+            memCalibration.beginWeights[targetTokenIndex],
+            updatedWeight,
+            memCalibration.finalWeights[targetTokenIndex]
+        );
         if (currentBlock == memCalibration.finalBlock) {
             calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert next called.
         }
@@ -810,8 +822,8 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     ) internal {
         IBPool optionPool_ = optionPool();
         uint256 weight = optionPool_.getDenormalizedWeight(token);
-        Calibration memory memCalibration = calibration;
-        uint256 beginBlock = memCalibration.beginBlock;
+        uint256 beginBlock = calibration.beginBlock;
+        //console.log(beginBlock, block.number);
         if (beginBlock != 0 && block.number >= beginBlock) {
             _decreaseWeightToTarget(token);
         }
@@ -830,8 +842,8 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         IBPool optionPool_ = optionPool();
         uint256 weight = optionPool_.getDenormalizedWeight(token);
         IERC20(token).safeTransferFrom(from, address(this), quantity);
-        Calibration memory memCalibration = calibration;
-        uint256 beginBlock = memCalibration.beginBlock;
+        uint256 beginBlock = calibration.beginBlock;
+        //console.log(beginBlock, block.number);
         if (beginBlock != 0 && block.number >= beginBlock) {
             _increaseWeightToTarget(token);
         }

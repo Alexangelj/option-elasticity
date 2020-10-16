@@ -371,10 +371,12 @@ library Pricing {
         uint256 o,
         uint256 t
     ) public pure returns (uint256) {
-        return
-            _fromInt(elasticity(s, k, o, t, auxiliary(s, k, o, t))).mul(
-                uint256(10**18).div(MANTISSA)
-            );
+        int128 d1 = auxiliary(s, k, o, t);
+        // get elasticity using -d1 = weight of risky asset e.g. 0.5
+        int128 elasticity = elasticity(s, k, o, t, d1.neg());
+        // convert to uint
+        uint256 weight = _fromInt(elasticity);
+        return weight.mul(uint256(10**18)).div(MANTISSA);
     }
 
     /**

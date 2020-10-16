@@ -42,12 +42,20 @@ class Calibration {
     }
 
     async calcWeights() {
+        console.log(
+            "Calculating Weights: ",
+            formatEther(await this.spot()),
+            formatEther(this.config.strike),
+            this.config.volatility.toString(),
+            this.config.time
+        );
         let weights = await this.pricing.weights(
             await this.spot(),
             this.config.strike,
             this.config.volatility,
             this.config.time
         );
+        console.log(formatEther(weights[0]));
         return weights;
     }
 
