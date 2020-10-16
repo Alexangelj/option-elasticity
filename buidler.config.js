@@ -13,6 +13,14 @@ task("accounts", "Prints the list of accounts", async () => {
     }
 });
 
+/* internalTask("increaseBlock", "Mines new blocks").setAction(async ({ blocks }) => {
+    await ethers._sendJsonRpcRequest({
+        method: "evm_increaseTime",
+        params: [blocks],
+        jsonrpc: "2.0",
+        id: new Date().getTime(),
+    });
+}); */
 // You have to export an object to set up your config
 // This object can have the following optional entries:
 // defaultNetwork, networks, solc, and paths.

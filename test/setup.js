@@ -145,6 +145,9 @@ const setupOptionPool = async (
         parseEther("100"),
         31449600
     );
+
+    await pool.bind(underlyingToken.address, parseEther("1"), parseEther("5"));
+    await pool.bind(quoteToken.address, parseEther("100"), parseEther("5"));
     return pool;
 };
 

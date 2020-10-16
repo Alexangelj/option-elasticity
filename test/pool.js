@@ -43,6 +43,8 @@ describe("OptionPool.sol", () => {
         // standard erc20s with mint functions
         // iou mappings at a 1:1 ratio with undelying asset. Deposit 1 ether => get 1 iEther
         [ether, dai] = await setupTokens();
+        underlyingToken = ether;
+        quoteToken = dai;
 
         // pricing is the black-scholes library, primitiveFactory deploys the option pools
         [pricing, primitiveFactory, priceProvider] = await setupMultipleContracts([
@@ -104,6 +106,33 @@ describe("OptionPool.sol", () => {
             console.log("change asset spot price to 103 then add 1", stateChange2);
             let stateChange3 = await setup.getStateChangeOfPool(state1, state4);
             console.log("big change", stateChange3);
+        });
+    });
+
+    describe("targetWeightsOverTime", () => {
+        it("should set calibration with target weights", async () => {
+            let finalWeightsArray = [parseEther("9"), parseEther("1")];
+            let beginBlock = await ethers.getDefaultProvider().getBlockNumber();
+            let finalBlock = beginBlock + 100;
+            await expect(
+                pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
+            ).to.emit(pool, "CalibrationUpdated");
+        });
+    });
+
+    describe("swapExactAmountIn", () => {
+        it("should swap tokens", async () => {
+            let state1 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            await pool.swapExactAmountIn(
+                underlyingToken.address,
+                parseEther("1"),
+                quoteToken.address,
+                0,
+                parseEther("1000000000")
+            );
+            let state2 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            let stateChange = await setup.getStateChangeOfPool(state1, state2);
+            console.log("initial state then join with 1", stateChange);
         });
     });
 });

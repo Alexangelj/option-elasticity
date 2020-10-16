@@ -363,7 +363,23 @@ library Pricing {
     }
 
     /**
-     * @dev Library entry point for easy testing.
+     * @dev Gets put option price. Library entry point for easy testing.
+     */
+    function getElasticity(
+        uint256 s,
+        uint256 k,
+        uint256 o,
+        uint256 t
+    ) public pure returns (uint256) {
+        return
+            _fromInt(elasticity(s, k, o, t, auxiliary(s, k, o, t))).mul(
+                uint256(10**18).div(MANTISSA)
+            );
+    }
+
+    /**
+     * 
+     @dev Library entry point for easy testing.
      */
     function weights(
         uint256 s,
