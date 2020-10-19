@@ -665,6 +665,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             uint256 tokenAmountIn = BNum.bmul(ratio, bal);
             require(tokenAmountIn != 0, "ERR_MATH_APPROX");
             require(tokenAmountIn <= maxAmountsIn[i], "ERR_LIMIT_IN");
+            if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
+                _increaseWeightToTarget(t, bal.add(tokenAmountIn));
+            }
             emit LOG_JOIN(msg.sender, t, tokenAmountIn);
             _pullUnderlying(t, msg.sender, tokenAmountIn, bal);
         }
@@ -731,6 +734,10 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         );
         require(poolAmountOut >= minPoolAmountOut, "ERR_LIMIT_OUT");
 
+        if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
+            _increaseWeightToTarget(tokenIn, optionPool_.getBalance(tokenIn).add(tokenAmountIn));
+        }
+
         // Mint the LP tokens and transfer them out to the `msg.sender`.
         emit LOG_JOIN(msg.sender, tokenIn, tokenAmountIn);
         _mintPoolShare(poolAmountOut);
@@ -791,8 +798,10 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _pushUnderlying(tokenOut, msg.sender, tokenAmountOut, tokenOutBalance);
 
         // Update actual denorm weight records.
-        // _increaseWeightToTarget(tokenIn);
-        // _decreaseWeightToTarget(tokenOut);
+        if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
+            _increaseWeightToTarget(tokenIn, tokenInBalance.add(tokenAmountIn));
+            _decreaseWeightToTarget(tokenOut, tokenOutBalance.sub(tokenAmountOut));
+        }
 
         spotPriceAfter = optionPool_.calcSpotPrice(
             tokenInBalance.add(tokenAmountIn),
@@ -830,10 +839,8 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
 
         optionPool_.rebind(token, totalTokenBalance.sub(quantity), weight);
         IERC20(token).safeTransfer(to, quantity);
-        if (beginBlock != 0 && block.number > beginBlock) {
+        /* if (beginBlock != 0 && block.number > beginBlock) {
             _decreaseWeightToTarget(token, totalTokenBalance.sub(quantity));
-        } /*  else {
-            optionPool_.rebind(token, totalTokenBalance.sub(quantity), weight);
         } */
     }
 
@@ -852,10 +859,8 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         uint256 beginBlock = calibration.beginBlock;
         //console.log(beginBlock, block.number);
         optionPool_.rebind(token, totalTokenBalance.add(quantity), weight);
-        if (beginBlock != 0 && block.number > beginBlock) {
+        /* if (beginBlock != 0 && block.number > beginBlock) {
             _increaseWeightToTarget(token, totalTokenBalance.add(quantity));
-        } /*  else {
-            optionPool_.rebind(token, totalTokenBalance.add(quantity), weight);
         } */
     }
 
