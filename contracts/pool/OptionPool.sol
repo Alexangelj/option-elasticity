@@ -255,7 +255,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         return true;
     }
 
-    function _increaseWeightToTarget(address targetToken) internal canAdjust {
+    function _increaseWeightToTarget(address targetToken, uint256 newBalance) internal canAdjust {
         IBPool optionPool_ = optionPool();
         Calibration memory memCalibration = calibration;
 
@@ -297,7 +297,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         }
     }
 
-    function _decreaseWeightToTarget(address targetToken) internal canAdjust {
+    function _decreaseWeightToTarget(address targetToken, uint256 newBalance) internal canAdjust {
         IBPool optionPool_ = optionPool();
         Calibration memory memCalibration = calibration;
 
@@ -759,6 +759,8 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         uint256 tokenInBalance = optionPool_.getBalance(tokenIn);
         uint256 tokenOutBalance = optionPool_.getBalance(tokenOut);
         uint256 spotPriceBefore;
+
+        require(tokenAmountIn <= tokenInBalance.mul(10**9), "ERR_MAX_IN_RATIO");
         {
             //uint256 tokenInWeight = optionPool_.getDenormalizedWeight(tokenIn);
             //uint256 tokenOutWeight = optionPool_.getDenormalizedWeight(tokenOut);
@@ -769,6 +771,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
                 optionPool_.getDenormalizedWeight(tokenOut),
                 optionPool_.getSwapFee()
             );
+            console.log(spotPriceBefore);
             require(spotPriceBefore <= maxPrice, "ERR_BAD_LIMIT_PRICE");
 
             tokenAmountOut = optionPool_.calcOutGivenIn(
@@ -799,7 +802,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             optionPool_.getSwapFee()
         );
 
-        //require(spotPriceAfter >= spotPriceBefore, "ERR_MATH_APPROX");
+        //require(spotPriceAfter >= spotPriceBefore, "ERR_MATH_APPROX"); // FIX -> small swaps reduce spot price
         require(spotPriceAfter <= maxPrice, "ERR_LIMIT_PRICE");
         console.log(spotPriceBefore, tokenAmountIn, tokenAmountOut, "ERR_MAX_APPROX");
         require(
@@ -818,16 +821,20 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         address token,
         address to,
         uint256 quantity,
-        uint256 totalPoolTokenBalance
+        uint256 totalTokenBalance
     ) internal {
         IBPool optionPool_ = optionPool();
-        uint256 weight = optionPool_.getDenormalizedWeight(token);
         uint256 beginBlock = calibration.beginBlock;
+        uint256 weight = optionPool_.getDenormalizedWeight(token);
         //console.log(beginBlock, block.number);
-        if (beginBlock != 0 && block.number >= beginBlock) {
-            _decreaseWeightToTarget(token);
-        }
+
+        optionPool_.rebind(token, totalTokenBalance.sub(quantity), weight);
         IERC20(token).safeTransfer(to, quantity);
+        if (beginBlock != 0 && block.number > beginBlock) {
+            _decreaseWeightToTarget(token, totalTokenBalance.sub(quantity));
+        } /*  else {
+            optionPool_.rebind(token, totalTokenBalance.sub(quantity), weight);
+        } */
     }
 
     /**
@@ -844,9 +851,12 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         IERC20(token).safeTransferFrom(from, address(this), quantity);
         uint256 beginBlock = calibration.beginBlock;
         //console.log(beginBlock, block.number);
-        if (beginBlock != 0 && block.number >= beginBlock) {
-            _increaseWeightToTarget(token);
-        }
+        optionPool_.rebind(token, totalTokenBalance.add(quantity), weight);
+        if (beginBlock != 0 && block.number > beginBlock) {
+            _increaseWeightToTarget(token, totalTokenBalance.add(quantity));
+        } /*  else {
+            optionPool_.rebind(token, totalTokenBalance.add(quantity), weight);
+        } */
     }
 
     function _mintPoolShare(uint256 quantity) internal {
@@ -865,6 +875,12 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _burn(address(this), quantity);
     }
 
+    /* State */
+
+    function setSwapFee(uint256 swapFee) external onlyController {
+        optionPool().setSwapFee(swapFee);
+    }
+
     /* ==== View Functions ==== */
 
     function calcSpotPrice(address tokenIn, address tokenOut) external view returns (uint256) {
@@ -878,6 +894,24 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         );
 
         return spot;
+    }
+
+    function calcSingleOutGivenPoolIn(address tokenOut, uint256 poolAmountIn)
+        external
+        view
+        returns (uint256)
+    {
+        IBPool optionPool_ = optionPool();
+        uint256 tokenAmountOut = optionPool_.calcSingleOutGivenPoolIn(
+            optionPool_.getBalance(tokenOut),
+            optionPool_.getDenormalizedWeight(tokenOut),
+            totalSupply,
+            optionPool_.getTotalDenormalizedWeight(),
+            poolAmountIn,
+            optionPool_.getSwapFee()
+        );
+
+        return tokenAmountOut;
     }
 
     function getDenormalizedWeight(address token_) external view returns (uint256) {
@@ -946,6 +980,10 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
 
     function getSwapFee() external view returns (uint256) {
         return optionPool().getSwapFee();
+    }
+
+    function getExitFee() external view returns (uint256) {
+        return 0;
     }
 
     function controller() public view returns (address) {
