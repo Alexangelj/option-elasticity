@@ -10,7 +10,8 @@
         "lint": "cross-env buidler check",
         "bevm": "cross-env buidler node",
         "testrpc": "ganache-cli --deterministic --gasLimit 10000000",
-        "test:pool": "cross-env buidler test ./test/test_pool.spec.js"
+        "test:pool": "cross-env buidler test ./test/test_pool.spec.js",
+        "test:pricing": "cross-env buidler test ./test/pricing.js"
     },
     "repository": "https://github.com/Alexangelj/option-elasticity.git",
     "author": "alex.ander.eth",
