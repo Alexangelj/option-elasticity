@@ -321,7 +321,7 @@ library Pricing {
         int128 d1
     ) internal pure returns (int128 numerator) {
         int128 x = fromWeiToInt128(s);
-        int128 delta = (1).fromUInt().sub(normdist(d1));
+        int128 delta = (1).fromUInt().sub(cumulativeDistributionFunction(d1));
         numerator = x.mul(delta);
     }
 

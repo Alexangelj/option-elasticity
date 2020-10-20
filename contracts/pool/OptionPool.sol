@@ -803,6 +803,8 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
             //console.log("increasing weight!");
             _increaseWeightToTarget(tokenIn, tokenInBalance.add(tokenAmountIn));
+        }
+        if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
             _decreaseWeightToTarget(tokenOut, tokenOutBalance.sub(tokenAmountOut));
         }
 

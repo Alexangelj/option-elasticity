@@ -196,14 +196,14 @@ describe("OptionPool.sol", () => {
                 pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
             ).to.emit(pool, "CalibrationUpdated");
 
-            pool.on("CalibrationUpdated", (beginBlock, beginWeights, finalBlock, finalWeights) => {
+            /* pool.on("CalibrationUpdated", (beginBlock, beginWeights, finalBlock, finalWeights) => {
                 console.log("CalibrationUpdated: ", {
                     beginBlock,
                     beginWeights,
                     finalBlock,
                     finalWeights,
                 });
-            });
+            }); */
         });
     });
 
@@ -309,19 +309,66 @@ describe("OptionPool.sol", () => {
             await generateReport();
         });
 
-        it("update spot price by $1, call a swap, log results", async () => {
+        /* it("log weight changes for each spot price update $1", async () => {
             let times = 25;
             let one = parseEther("1");
-            let tokenIn = ETHER.address;
-            let tokenAmountIn = parseEther("1");
-            let tokenOut = DAI.address;
-            let minAmountOut = 0;
-            let maxPrice = parseEther("50000");
 
             for (let i = 0; i < times; i++) {
                 // update oracle by $1
                 let spot = await oracle.testPrice();
                 await oracle.setTestPrice(spot.add(one));
+
+                // calibrate new elasticity since spot increased
+                calibration = new Calibration(CONFIG, ETHER, DAI);
+                await calibration.initialize(pricing, oracle, pool);
+
+                // Use the new calibration weights for the target weights.
+                let finalWeightsArray = [
+                    calibration.weights[0].mul(25),
+                    calibration.weights[1].mul(25),
+                ];
+                console.log(`weights: ${finalWeightsArray.map((v) => formatEther(v.div(25)))}`);
+            }
+        }); */
+
+        it("update spot price by $1, call a swap, log results", async () => {
+            let times = 25;
+            let one = parseEther("1");
+            let tokenIn = ETHER.address;
+            let tokenAmountIn = parseEther("0.1");
+            let tokenOut = DAI.address;
+            let minAmountOut = 0;
+            let maxPrice = parseEther("50000");
+            await oracle.setTestPrice(parseEther("100"));
+
+            let blocksAnHour = 4 * 60;
+
+            for (let i = 0; i < times; i++) {
+                // update oracle by $1
+                let spot = await oracle.testPrice();
+                await oracle.setTestPrice(spot.add(one));
+
+                // calibrate new elasticity since spot increased
+                calibration = new Calibration(CONFIG, ETHER, DAI);
+                await calibration.initialize(pricing, oracle, pool);
+
+                // Use the new calibration weights for the target weights.
+                let finalWeightsArray = [
+                    calibration.weights[0].mul(25),
+                    calibration.weights[1].mul(25),
+                ];
+                let beginBlock = await ethers.provider.getBlockNumber();
+                let finalBlock = +beginBlock + blocksAnHour;
+                await expect(
+                    pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
+                ).to.emit(pool, "CalibrationUpdated");
+
+                // mine some blocks
+                let blocksToMine = blocksAnHour - 1;
+                for (let i = 0; i < blocksToMine; i++) {
+                    await ethers.provider.send("evm_mine");
+                }
+                let block = await ethers.provider.getBlockNumber();
 
                 // swap 1 ether
                 await expect(
@@ -334,10 +381,6 @@ describe("OptionPool.sol", () => {
                     )
                 ).to.emit(pool, "LOG_SWAP");
 
-                // mine a block
-                let provider = new ethers.providers.JsonRpcProvider();
-                await provider.send("evm_mine");
-
                 // log the results
                 let lpTokenValue = await calcLpTokenValue(pool);
                 spot = await oracle.testPrice();
@@ -347,11 +390,23 @@ describe("OptionPool.sol", () => {
                     CONFIG.volatility,
                     CONFIG.time
                 );
+                let actualWeights = [];
+                let tokens = await pool.getCurrentTokens();
+                for (let i = 0; i < tokens.length; i++) {
+                    let weight = await pool.getDenormalizedWeight(tokens[i]);
+                    actualWeights.push(weight);
+                }
+
+                let poolSpot = await pool.calcSpotPrice(tokens[1], tokens[0]); // the spot price is reversed?
 
                 console.log(
-                    `Spot: ${formatEther(spot)}, lpTokenValue: ${formatEther(
+                    `Block: ${block.toString()}, Spot: ${formatEther(
+                        spot
+                    )}, pool spot: ${formatEther(poolSpot)}, lpTokenValue: ${formatEther(
                         lpTokenValue
-                    )}, putPrice: ${formatEther(putPrice)}`
+                    )}, putPrice: ${formatEther(putPrice)}, weights: ${finalWeightsArray.map((v) =>
+                        formatEther(v.div(25))
+                    )}, actualWeights: ${actualWeights.map((v) => formatEther(v.div(25)))}`
                 );
             }
         });
