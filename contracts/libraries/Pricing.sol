@@ -201,6 +201,48 @@ library Pricing {
         n = (1).fromUInt().sub(numerator.div(denominator));
     }
 
+    function cumulativeDistributionFunction(int128 x) internal pure returns (int128) {
+        // where p = 0.3275911,
+        // a1 = 0.254829592, a2 = −0.284496736, a3 = 1.421413741, a4 = −1.453152027, a5 = 1.061405429
+        int128 p = 0x53dd02a4f5ee2e46;
+        int128 one = ABDKMath64x64.fromUInt(1);
+        int128 two = ABDKMath64x64.fromUInt(2);
+        int128 a1 = 0x413c831bb169f874;
+        int128 a2 = -0x48d4c730f051a5fe;
+        int128 a3 = 0x16a09e667f3bcc908;
+        int128 a4 = -0x17401c57014c38f14;
+        int128 a5 = 0x10fb844255a12d72e;
+        int128 z = x.div(a3);
+        int128 t = one.div(one.add(p.mul(z.abs())));
+        int128 erf = getErrorFunction(z, t);
+        if (z < 0) {
+            erf = erf.neg();
+        }
+        int128 result = (one.div(two)).mul(one.add(erf));
+        return result;
+    }
+
+    function getErrorFunction(int128 z, int128 t) internal pure returns (int128) {
+        // where a1 = 0.254829592, a2 = −0.284496736, a3 = 1.421413741, a4 = −1.453152027, a5 = 1.061405429
+        int128 step1;
+        {
+            int128 a3 = 0x16a09e667f3bcc908;
+            int128 a4 = -0x17401c57014c38f14;
+            int128 a5 = 0x10fb844255a12d72e;
+            step1 = t.mul(a3.add(t.mul(a4.add(t.mul(a5)))));
+        }
+
+        int128 result;
+        {
+            int128 one = ABDKMath64x64.fromUInt(1);
+            int128 a1 = 0x413c831bb169f874;
+            int128 a2 = -0x48d4c730f051a5fe;
+            int128 step2 = a1.add(t.mul(a2.add(step1)));
+            result = one.sub(t.mul(step2.mul(((z).pow(2).neg()).exp())));
+        }
+        return result;
+    }
+
     /**
      * @dev Calculates a call option value using black-scholes.
      * @notice C(s, t) = s * N(d1) - Ke^-r(T - t) * N(d2). Where N() is the standard normal CDF.
@@ -247,8 +289,8 @@ library Pricing {
         int128 strike = fromWeiToInt128(k);
         int128 d1 = auxiliary(s, k, o, t);
         int128 d2 = auxiliary2(s, k, o, t);
-        int128 nd1 = normdist((d1).neg());
-        int128 nd2 = normdist((d2).neg());
+        int128 nd1 = cumulativeDistributionFunction((d1).neg());
+        int128 nd2 = cumulativeDistributionFunction((d2).neg());
         int128 bs = strike.mul(nd2) > spot.mul(nd1)
             ? strike.mul(nd2).sub(spot.mul(nd1))
             : int128(0);
@@ -258,9 +300,9 @@ library Pricing {
         int128 strike = fromWeiToInt128(k);
         int128 d1 = auxiliary(s, k, o, t);
         int128 d2 = auxiliary2(s, k, o, t);
-        int128 delta = normdist(d1).sub((1).fromUInt());
+        int128 delta = cumulativeDistributionFunction(d1).sub((1).fromUInt());
         int128 part1 = spot.mul(delta);
-        int128 part2 = strike.mul(((1).fromUInt()).sub(normdist(d2)));
+        int128 part2 = strike.mul(((1).fromUInt()).sub(cumulativeDistributionFunction(d2)));
         int128 bs = part1.add(part2);
         p = bs; */
     }
