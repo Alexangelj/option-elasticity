@@ -235,6 +235,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         // Start targeting the final weights at this block if beginBlock has been passed.
         uint256 actualBeginBlock;
         if (block.number > beginBlock) {
+            //console.log("block number", block.number);
             actualBeginBlock = block.number;
         } else {
             actualBeginBlock = beginBlock;
@@ -798,7 +799,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         _pushUnderlying(tokenOut, msg.sender, tokenAmountOut, tokenOutBalance);
 
         // Update actual denorm weight records.
+        //console.log(calibration.beginBlock, block.number);
         if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
+            //console.log("increasing weight!");
             _increaseWeightToTarget(tokenIn, tokenInBalance.add(tokenAmountIn));
             _decreaseWeightToTarget(tokenOut, tokenOutBalance.sub(tokenAmountOut));
         }

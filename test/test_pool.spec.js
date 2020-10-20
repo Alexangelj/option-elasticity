@@ -188,11 +188,22 @@ describe("OptionPool.sol", () => {
                 calibration.weights[1].mul(25),
             ];
             let provider = new ethers.providers.JsonRpcProvider();
-            let beginBlock = await provider.send("eth_blockNumber");
-            let finalBlock = beginBlock + 2;
+            //let beginBlock = await provider.send("eth_blockNumber");
+            let beginBlock = await ethers.provider.getBlockNumber();
+            console.log(beginBlock.toString());
+            let finalBlock = +beginBlock + 100;
             await expect(
                 pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
             ).to.emit(pool, "CalibrationUpdated");
+
+            pool.on("CalibrationUpdated", (beginBlock, beginWeights, finalBlock, finalWeights) => {
+                console.log("CalibrationUpdated: ", {
+                    beginBlock,
+                    beginWeights,
+                    finalBlock,
+                    finalWeights,
+                });
+            });
         });
     });
 
