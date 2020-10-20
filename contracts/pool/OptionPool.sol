@@ -293,9 +293,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             updatedWeight,
             memCalibration.finalWeights[targetTokenIndex]
         );
-        if (currentBlock == memCalibration.finalBlock) {
+        /* if (currentBlock == memCalibration.finalBlock) {
             calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert next called.
-        }
+        } */
     }
 
     function _decreaseWeightToTarget(address targetToken, uint256 newBalance) internal canAdjust {
@@ -335,9 +335,9 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
             updatedWeight,
             memCalibration.finalWeights[targetTokenIndex]
         );
-        if (currentBlock == memCalibration.finalBlock) {
+        /* if (currentBlock == memCalibration.finalBlock) {
             calibration.beginBlock = 0; // Setting beginBlock to 0 will cause this function to revert next called.
-        }
+        } */
     }
 
     function _calculateWeightIncreaseToTarget(
@@ -803,8 +803,6 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
             //console.log("increasing weight!");
             _increaseWeightToTarget(tokenIn, tokenInBalance.add(tokenAmountIn));
-        }
-        if (calibration.beginBlock != 0 && block.number > calibration.beginBlock) {
             _decreaseWeightToTarget(tokenOut, tokenOutBalance.sub(tokenAmountOut));
         }
 
