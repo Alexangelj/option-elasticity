@@ -253,6 +253,16 @@ library Pricing {
             ? strike.mul(nd2).sub(spot.mul(nd1))
             : int128(0);
         p = bs;
+
+        /* int128 spot = fromWeiToInt128(s);
+        int128 strike = fromWeiToInt128(k);
+        int128 d1 = auxiliary(s, k, o, t);
+        int128 d2 = auxiliary2(s, k, o, t);
+        int128 delta = normdist(d1).sub((1).fromUInt());
+        int128 part1 = spot.mul(delta);
+        int128 part2 = strike.mul(((1).fromUInt()).sub(normdist(d2)));
+        int128 bs = part1.add(part2);
+        p = bs; */
     }
 
     // Elasticity and greek functions.

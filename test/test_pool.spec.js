@@ -85,9 +85,8 @@ const calcExitPoolAmountsOut = async (pool, poolAmountIn) => {
     }
  */
 
-const calcLpTokenValue = async (pool, oracle, dai, poolAmountIn) => {
+const calcLpTokenValue = async (pool) => {
     let one = parseEther("1");
-    let spot = await oracle.testPrice();
     let totalWeight = await pool.getTotalDenormalizedWeight();
     let tokens = await pool.getCurrentTokens();
     let token = tokens[1]; //dai
@@ -95,7 +94,6 @@ const calcLpTokenValue = async (pool, oracle, dai, poolAmountIn) => {
     let denorm = await pool.getDenormalizedWeight(token);
     let extrapolated = bal.mul(totalWeight.mul(one).div(denorm)).div(one);
     let totalSupply = await pool.totalSupply();
-    //let value = spot.mul(extrapolated).div(one);
     let value = extrapolated.mul(one).div(totalSupply);
     return value;
 };
@@ -115,12 +113,18 @@ describe("OptionPool.sol", () => {
         let spot = await oracle.testPrice();
         let lpTokenValue = await calcSingleOutGivenPoolIn(pool, DAI.address, parseEther("1"));
         if (lpTokenValue > 0) lpTokenValue = lpTokenValue.mul(spot).div(parseEther("1"));
-        let lpValue = await calcLpTokenValue(pool, oracle, DAI.address, parseEther("1"));
+        let lpValue = await calcLpTokenValue(pool);
         let totalSupply = await pool.totalSupply();
+        let putPrice = await pricing.getPutPrice(
+            spot,
+            CONFIG.strike,
+            CONFIG.volatility,
+            CONFIG.time
+        );
         Object.assign(data, {
             elasticity: calibration.elasticity,
             callPrice: calibration.callPrice,
-            putPrice: calibration.putPrice,
+            putPrice: putPrice,
             actualSpot: spot,
             lpTokenValue: lpValue,
             totalSupply: totalSupply,
@@ -197,9 +201,11 @@ describe("OptionPool.sol", () => {
             await generateReport();
         });
 
-        it("should join the pool and mint 100000 LP tokens", async () => {
-            let poolAmountOut = parseEther("100000");
-            let maxAmountsIn = [parseEther("1000000"), parseEther("1000000")];
+        it("should join the pool and mint starting LP tokens", async () => {
+            let token0Value = parseEther("250"); // ether
+            let token1Value = parseEther("50000"); // dai
+            let poolAmountOut = parseEther("490");
+            let maxAmountsIn = [token0Value, token1Value];
             await expect(pool.joinPool(poolAmountOut, maxAmountsIn)).to.emit(pool, "LOG_JOIN");
         });
     });
@@ -241,7 +247,7 @@ describe("OptionPool.sol", () => {
             let tokenOut = DAI.address;
             let minAmountOut = 0;
             let maxPrice = parseEther("50000");
-            pool.on("LOG_SWAP", (caller, tokenIn, tokenOut, tokenAmountIn, tokenAmountOut) => {
+            /* pool.on("LOG_SWAP", (caller, tokenIn, tokenOut, tokenAmountIn, tokenAmountOut) => {
                 tokenAmountIn = formatEther(tokenAmountIn);
                 tokenAmountOut = formatEther(tokenAmountOut);
                 console.log("LOG_SWAP: ", {
@@ -265,7 +271,7 @@ describe("OptionPool.sol", () => {
                     finalWeight,
                     weightChange,
                 });
-            });
+            }); */
 
             /* pool.on("LOG_WEIGHT_DECREASE", (beginWeight, updatedWeight, finalWeight) => {
                 weightChange = formatEther(updatedWeight.sub(beginWeight).div(25));
@@ -280,7 +286,7 @@ describe("OptionPool.sol", () => {
                 });
             }); */
 
-            logEvent(pool, "LOG_WEIGHT_DECREASE");
+            //logEvent(pool, "LOG_WEIGHT_DECREASE");
             await expect(
                 pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
             ).to.emit(pool, "LOG_SWAP");
@@ -293,9 +299,50 @@ describe("OptionPool.sol", () => {
         });
 
         it("update spot price by $1, call a swap, log results", async () => {
-            let poolAmountOut = parseEther("100");
-            let maxAmountsIn = [parseEther("1000000"), parseEther("1000000")];
-            await expect(pool.joinPool(poolAmountOut, maxAmountsIn)).to.emit(pool, "LOG_JOIN");
+            let times = 25;
+            let one = parseEther("1");
+            let tokenIn = ETHER.address;
+            let tokenAmountIn = parseEther("1");
+            let tokenOut = DAI.address;
+            let minAmountOut = 0;
+            let maxPrice = parseEther("50000");
+
+            for (let i = 0; i < times; i++) {
+                // update oracle by $1
+                let spot = await oracle.testPrice();
+                await oracle.setTestPrice(spot.add(one));
+
+                // swap 1 ether
+                await expect(
+                    pool.swapExactAmountIn(
+                        tokenIn,
+                        tokenAmountIn,
+                        tokenOut,
+                        minAmountOut,
+                        maxPrice
+                    )
+                ).to.emit(pool, "LOG_SWAP");
+
+                // mine a block
+                let provider = new ethers.providers.JsonRpcProvider();
+                await provider.send("evm_mine");
+
+                // log the results
+                let lpTokenValue = await calcLpTokenValue(pool);
+                spot = await oracle.testPrice();
+                let putPrice = await pricing.getPutPrice(
+                    spot,
+                    CONFIG.strike,
+                    CONFIG.volatility,
+                    CONFIG.time
+                );
+
+                console.log(
+                    `Spot: ${formatEther(spot)}, lpTokenValue: ${formatEther(
+                        lpTokenValue
+                    )}, putPrice: ${formatEther(putPrice)}`
+                );
+            }
         });
     });
 });

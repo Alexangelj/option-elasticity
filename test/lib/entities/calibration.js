@@ -32,12 +32,15 @@ class Calibration {
     }
 
     async calcAmounts() {
-        let callValue = await this.calcCallPrice();
+        /* let callValue = await this.calcCallPrice();
         let totalSupply = await this.pool.totalSupply();
         let totalValue = callValue.mul(totalSupply).div(parseEther("1"));
         let amount0 = totalValue.mul(this.weights.riskyW).div(await this.spot());
-        let amount1 = totalValue.mul(this.weights.riskFW).div(parseEther("1"));
-        let amounts = [amount0, amount1];
+        let amount1 = totalValue.mul(this.weights.riskFW).div(parseEther("1")); */
+        let amounts = [
+            this.weights.riskyW,
+            this.weights.riskFW.mul(await this.oracle.testPrice()).div(parseEther("1")),
+        ];
         return amounts;
     }
 

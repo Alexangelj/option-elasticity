@@ -778,7 +778,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
                 optionPool_.getDenormalizedWeight(tokenOut),
                 optionPool_.getSwapFee()
             );
-            console.log(spotPriceBefore);
+            //console.log(spotPriceBefore);
             require(spotPriceBefore <= maxPrice, "ERR_BAD_LIMIT_PRICE");
 
             tokenAmountOut = optionPool_.calcOutGivenIn(
@@ -813,7 +813,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
 
         //require(spotPriceAfter >= spotPriceBefore, "ERR_MATH_APPROX"); // FIX -> small swaps reduce spot price
         require(spotPriceAfter <= maxPrice, "ERR_LIMIT_PRICE");
-        console.log(spotPriceBefore, tokenAmountIn, tokenAmountOut, "ERR_MAX_APPROX");
+        //console.log(spotPriceBefore, tokenAmountIn, tokenAmountOut, "ERR_MAX_APPROX");
         require(
             spotPriceBefore <= tokenAmountIn.mul(1 ether).div(tokenAmountOut),
             "ERR_MATH_APPROX"
