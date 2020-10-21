@@ -43,6 +43,14 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         uint256 finalBlock,
         uint256[] finalWeights
     );
+
+    event PoolBoundTokenUpdate(
+        address indexed from,
+        address indexed tokenIn,
+        uint256 tokenBalance,
+        uint256 tokenWeight
+    );
+
     event LOG_JOIN(address indexed from, address indexed tokenIn, uint256 tokenAmountIn);
     event LOG_EXIT(address indexed from, address indexed tokenOut, uint256 tokenAmountOut);
     event LOG_SWAP(
@@ -205,7 +213,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         uint256[] calldata finalWeightsArray,
         uint256 beginBlock,
         uint256 finalBlock
-    ) public onlyTokenBinder {
+    ) external onlyBinder {
         require(finalBlock > beginBlock, "ERR_FINAL_BLOCK_BEFORE");
         IBPool optionPool_ = optionPool();
 
@@ -575,6 +583,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         // Core pool will pull the `balance` of token from this contract into the pool.
         // Core pool will also make a state change: update the `_records` mapping with a new record.
         optionPool_.bind(token_, balance, denorm);
+        emit PoolBoundTokenUpdate(msg.sender, token_, balance, denorm);
     }
 
     /**
@@ -616,7 +625,7 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
     function unbind(address token_) external onlyBinder nonReentrant {
         // Remove a token from a pool by clearing its record.
         optionPool().unbind(token_);
-        _pushRemainder(IERC20(token));
+        _pushRemainder(IERC20(token_));
     }
 
     /* ==== Liquidity Provision Functions ==== */
@@ -772,7 +781,6 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
         }
 
         // Pull the `tokenIn` from the `msg.sender` into the core pool.
-        // Warning: updates state of the core pool with a call to update weights.
         _pullUnderlying(tokenIn, msg.sender, tokenAmountIn, tokenInBalance);
         _pushUnderlying(tokenOut, msg.sender, tokenAmountOut, tokenOutBalance);
 
@@ -973,6 +981,23 @@ contract OptionPool is IOptionPool, ERC20, ReentrancyGuard {
                 tokenAmountIn,
                 swapFee
             );
+    }
+
+    function calcOutGivenIn(
+        uint256 tokenAmountIn,
+        address tokenIn,
+        address tokenOut
+    ) external view returns (uint256) {
+        IBPool optionPool_ = optionPool();
+        uint256 tokenAmountOut = optionPool_.calcOutGivenIn(
+            optionPool_.getBalance(tokenIn),
+            optionPool_.getDenormalizedWeight(tokenIn),
+            optionPool_.getBalance(tokenOut),
+            optionPool_.getDenormalizedWeight(tokenOut),
+            tokenAmountIn,
+            optionPool_.getSwapFee()
+        );
+        return tokenAmountOut;
     }
 
     /* function isPublicSwap() external view returns(bool) {

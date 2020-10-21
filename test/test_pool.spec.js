@@ -14,27 +14,6 @@ const BalanceTable = require("./lib/logs/balanceTable");
 const formatTableData = require("./lib/logs/formatTableData");
 const table = new BalanceTable({});
 
-const logEvent = async (contract, name) => {
-    contract.on(name, (...args) => {
-        let receipt = args[args.length - 1];
-        let length = receipt.args.length;
-        let array = receipt.args;
-        let keys = Object.keys(array);
-        //console.log(`${name} ${array} ${receipt}`);
-        /* keys.map((v) => {
-            return console.log(`${name} ${v}: ${array[v]}`);
-        }); */
-        /* for (let i = 0; i < args.length - 1; i++) {
-            let value = args[i];
-            if (ethers.BigNumber.isBigNumber(value)) {
-                console.log(`${name} ${formatEther(value)}`);
-            } else {
-                console.log(`${name} ${value}`);
-            }
-        } */
-    });
-};
-
 const calcSingleOutGivenPoolIn = async (pool, tokenOut, poolAmountIn) => {
     let poolSupply = await pool.totalSupply();
     if (poolSupply > 0 && poolSupply > poolAmountIn) {
@@ -43,6 +22,21 @@ const calcSingleOutGivenPoolIn = async (pool, tokenOut, poolAmountIn) => {
     } else {
         return 0;
     }
+};
+
+const getCurrentTokens = async (pool) => {
+    let tokens = await pool.getCurrentTokens();
+    return tokens;
+};
+
+const calcSpotPrice = async (pool, tokenIn, tokenOut) => {
+    let spot = await pool.calcSpotPrice(tokenIn, tokenOut);
+    return spot;
+};
+
+const calcOutGivenIn = async (pool, tokenAmountIn, tokenIn, tokenOut) => {
+    let tokenAmountOut = await pool.calcOutGivenIn(tokenAmountIn, tokenIn, tokenOut);
+    return tokenAmountOut;
 };
 
 const calcExitPoolAmountsOut = async (pool, poolAmountIn) => {
@@ -63,27 +57,6 @@ const calcExitPoolAmountsOut = async (pool, poolAmountIn) => {
 
     return amounts;
 };
-
-/**
- * function extrapolatePoolValueFromToken()
-        external
-        view
-        returns (address tokenAddress, uint256 extrapolatedValue)
-    {
-        IBPool optionPool_ = optionPool();
-        uint256 totalWeight = optionPool_.getTotalDenormalizedWeight();
-        address[] memory tokens = optionPool_.getCurrentTokens();
-        uint256 len = tokens.length;
-        for (uint256 i = 0; i < len; i++) {
-            tokenAddress = tokens[i];
-            uint256 bal = optionPool_.getBalance(tokenAddress);
-            uint256 denorm = optionPool_.getDenormalizedWeight(tokenAddress);
-            extrapolatedValue = bal.mul(totalWeight.mul(1 ether).div(denorm));
-            break;
-        }
-        require(extrapolatedValue > 0, "ERR_NONE_READY");
-    }
- */
 
 const calcLpTokenValue = async (pool) => {
     let one = parseEther("1");
@@ -165,9 +138,18 @@ describe("OptionPool.sol", () => {
         });
 
         it("should bind initial tokens, with initial weights and amounts", async () => {
-            console.log(formatEther(calibration.weights[0]), formatEther(calibration.weights[1]));
-            await pool.bind(ETHER.address, calibration.amounts[0], calibration.weights[0].mul(25));
-            await pool.bind(DAI.address, calibration.amounts[1], calibration.weights[1].mul(25));
+            let token0 = ETHER.address;
+            let balance0 = calibration.amounts[0];
+            let weight0 = calibration.weights[0].mul(25);
+            let token1 = DAI.address;
+            let balance1 = calibration.amounts[1];
+            let weight1 = calibration.weights[1].mul(25);
+            await expect(pool.bind(token0, balance0, weight0))
+                .to.emit(pool, "PoolBoundTokenUpdate")
+                .withArgs(Alice, token0, balance0, weight0);
+            await expect(pool.bind(token1, balance1, weight1))
+                .to.emit(pool, "PoolBoundTokenUpdate")
+                .withArgs(Alice, token1, balance1, weight1);
         });
     });
 
@@ -177,6 +159,13 @@ describe("OptionPool.sol", () => {
         });
 
         it("should set calibration with a new target weights array", async () => {
+            // Get the beginning weights to check later.
+            let tokens = await pool.getCurrentTokens();
+            let beginWeightsArray = [];
+            for (let i = 0; i < tokens.length; i++) {
+                beginWeightsArray[i] = await pool.getDenormalizedWeight(tokens[i]);
+            }
+
             // Set a new spot price then calc a new calibration.
             await oracle.setTestPrice(parseEther("101"));
             calibration = new Calibration(CONFIG, ETHER, DAI);
@@ -187,23 +176,11 @@ describe("OptionPool.sol", () => {
                 calibration.weights[0].mul(25),
                 calibration.weights[1].mul(25),
             ];
-            let provider = new ethers.providers.JsonRpcProvider();
-            //let beginBlock = await provider.send("eth_blockNumber");
             let beginBlock = await ethers.provider.getBlockNumber();
-            console.log(beginBlock.toString());
-            let finalBlock = +beginBlock + 100;
-            await expect(
-                pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
-            ).to.emit(pool, "CalibrationUpdated");
-
-            /* pool.on("CalibrationUpdated", (beginBlock, beginWeights, finalBlock, finalWeights) => {
-                console.log("CalibrationUpdated: ", {
-                    beginBlock,
-                    beginWeights,
-                    finalBlock,
-                    finalWeights,
-                });
-            }); */
+            let finalBlock = beginBlock + CONFIG.updatePeriodInBlocks;
+            await expect(pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock))
+                .to.emit(pool, "CalibrationUpdated")
+                .withArgs(beginBlock, beginWeightsArray, finalBlock, finalWeightsArray);
         });
     });
 
@@ -230,77 +207,47 @@ describe("OptionPool.sol", () => {
             let tokenIn = ETHER.address;
             let tokenAmountIn = parseEther("5");
             let tokenOut = DAI.address;
-            let minAmountOut = 0;
-            let maxPrice = parseEther("50000");
+            let minAmountOut = await calcOutGivenIn(pool, tokenAmountIn, tokenIn, tokenOut);
+            let spotPrice = await calcSpotPrice(pool, tokenIn, tokenOut);
+            let slippage = spotPrice.div(CONFIG.slippage);
+            let maxPrice = spotPrice.add(slippage);
             await expect(
                 pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
-            ).to.emit(pool, "LOG_SWAP");
+            )
+                .to.emit(pool, "LOG_SWAP")
+                .withArgs(Alice, tokenIn, tokenOut, tokenAmountIn, minAmountOut);
         });
 
-        it("should swap tokenIn for tokenOut after some blocks have passed", async () => {
-            let provider = new ethers.providers.JsonRpcProvider();
-            await provider.send("evm_mine");
+        it("should swap tokenIn for tokenOut after a block has passed", async () => {
+            await ethers.provider.send("evm_mine");
             let tokenIn = ETHER.address;
             let tokenAmountIn = parseEther("5");
             let tokenOut = DAI.address;
-            let minAmountOut = 0;
-            let maxPrice = parseEther("50000");
+            let minAmountOut = await calcOutGivenIn(pool, tokenAmountIn, tokenIn, tokenOut);
+            let spotPrice = await calcSpotPrice(pool, tokenIn, tokenOut);
+            let slippage = spotPrice.div(CONFIG.slippage);
+            let maxPrice = spotPrice.add(slippage);
             await expect(
                 pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
-            ).to.emit(pool, "LOG_SWAP");
+            )
+                .to.emit(pool, "LOG_SWAP")
+                .withArgs(Alice, tokenIn, tokenOut, tokenAmountIn, minAmountOut);
         });
 
         it("should swap a small quantity of tokens", async () => {
-            let provider = new ethers.providers.JsonRpcProvider();
-            await provider.send("evm_mine");
+            await ethers.provider.send("evm_mine");
             let tokenIn = ETHER.address;
             let tokenAmountIn = parseEther("0.0001");
             let tokenOut = DAI.address;
-            let minAmountOut = 0;
-            let maxPrice = parseEther("50000");
-            /* pool.on("LOG_SWAP", (caller, tokenIn, tokenOut, tokenAmountIn, tokenAmountOut) => {
-                tokenAmountIn = formatEther(tokenAmountIn);
-                tokenAmountOut = formatEther(tokenAmountOut);
-                console.log("LOG_SWAP: ", {
-                    caller,
-                    tokenIn,
-                    tokenOut,
-                    tokenAmountIn,
-                    tokenAmountOut,
-                });
-            });
-
-            pool.on("LOG_WEIGHT_INCREASE", (beginWeight, updatedWeight, finalWeight) => {
-                weightChange = formatEther(updatedWeight.sub(beginWeight).div(25));
-                beginWeight = formatEther(beginWeight.div(25));
-                updatedWeight = formatEther(updatedWeight.div(25));
-                finalWeight = formatEther(finalWeight.div(25));
-
-                console.log("LOG_WEIGHT_INCREASE: ", {
-                    beginWeight,
-                    updatedWeight,
-                    finalWeight,
-                    weightChange,
-                });
-            }); */
-
-            /* pool.on("LOG_WEIGHT_DECREASE", (beginWeight, updatedWeight, finalWeight) => {
-                weightChange = formatEther(updatedWeight.sub(beginWeight).div(25));
-                beginWeight = formatEther(beginWeight.div(25));
-                updatedWeight = formatEther(updatedWeight.div(25));
-                finalWeight = formatEther(finalWeight.div(25));
-                console.log("LOG_WEIGHT_DECREASE: ", {
-                    beginWeight,
-                    updatedWeight,
-                    finalWeight,
-                    weightChange,
-                });
-            }); */
-
-            //logEvent(pool, "LOG_WEIGHT_DECREASE");
+            let minAmountOut = await calcOutGivenIn(pool, tokenAmountIn, tokenIn, tokenOut);
+            let spotPrice = await calcSpotPrice(pool, tokenIn, tokenOut);
+            let slippage = spotPrice.mul(parseEther("1")).div(CONFIG.slippage);
+            let maxPrice = spotPrice.add(slippage);
             await expect(
                 pool.swapExactAmountIn(tokenIn, tokenAmountIn, tokenOut, minAmountOut, maxPrice)
-            ).to.emit(pool, "LOG_SWAP");
+            )
+                .to.emit(pool, "LOG_SWAP")
+                .withArgs(Alice, tokenIn, tokenOut, tokenAmountIn, minAmountOut);
         });
     });
 
@@ -309,29 +256,8 @@ describe("OptionPool.sol", () => {
             await generateReport();
         });
 
-        /* it("log weight changes for each spot price update $1", async () => {
-            let times = 25;
-            let one = parseEther("1");
-
-            for (let i = 0; i < times; i++) {
-                // update oracle by $1
-                let spot = await oracle.testPrice();
-                await oracle.setTestPrice(spot.add(one));
-
-                // calibrate new elasticity since spot increased
-                calibration = new Calibration(CONFIG, ETHER, DAI);
-                await calibration.initialize(pricing, oracle, pool);
-
-                // Use the new calibration weights for the target weights.
-                let finalWeightsArray = [
-                    calibration.weights[0].mul(25),
-                    calibration.weights[1].mul(25),
-                ];
-                console.log(`weights: ${finalWeightsArray.map((v) => formatEther(v.div(25)))}`);
-            }
-        }); */
-
         it("update spot price by $1, call a swap, log results", async () => {
+            console.log("This tests take a little while to mine blocks...");
             let times = 25;
             let one = parseEther("1");
             let tokenIn = ETHER.address;
@@ -399,7 +325,7 @@ describe("OptionPool.sol", () => {
 
                 let poolSpot = await pool.calcSpotPrice(tokens[1], tokens[0]); // the spot price is reversed?
 
-                console.log(
+                /* console.log(
                     `Block: ${block.toString()}, Spot: ${formatEther(
                         spot
                     )}, pool spot: ${formatEther(poolSpot)}, lpTokenValue: ${formatEther(
@@ -407,18 +333,13 @@ describe("OptionPool.sol", () => {
                     )}, putPrice: ${formatEther(putPrice)}, weights: ${finalWeightsArray.map((v) =>
                         formatEther(v.div(25))
                     )}, actualWeights: ${actualWeights.map((v) => formatEther(v.div(25)))}`
-                );
+                ); */
             }
         });
 
-        it("update spot price by $1, call a join, log results", async () => {
+        /* it("update spot price by $1, call a join, log results", async () => {
             let times = 25;
             let one = parseEther("1");
-            let tokenIn = ETHER.address;
-            let tokenAmountIn = parseEther("0.1");
-            let tokenOut = DAI.address;
-            let minAmountOut = 0;
-            let maxPrice = parseEther("50000");
             await oracle.setTestPrice(parseEther("100"));
 
             let blocksAnHour = 4 * 60;
@@ -484,6 +405,6 @@ describe("OptionPool.sol", () => {
                     )}, actualWeights: ${actualWeights.map((v) => formatEther(v.div(25)))}`
                 );
             }
-        });
+        }); */
     });
 });

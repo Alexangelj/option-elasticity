@@ -8,5 +8,7 @@ const ENVIRONMENT_CONFIG = {
     volatility: 200,
     time: 31449600,
     initialSupply: parseEther("1"),
+    updatePeriodInBlocks: 240,
+    slippage: 20,
 };
 module.exports = ENVIRONMENT_CONFIG;
