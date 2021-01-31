@@ -3,6 +3,7 @@ const { parseEther } = bre.ethers.utils;
 const BFactory = require("../balancer-core/build/contracts/BFactory.json");
 const BPool = require("../balancer-core/build/contracts/BPool.json");
 const { formatEther } = require("ethers/lib/utils");
+const { setupOptionProtocol } = require("./setup");
 const ethers = bre.ethers;
 
 const newWallets = async () => {
@@ -31,18 +32,17 @@ describe("Pricing Contract", () => {
         riskFree = await _riskFree.deploy("Risk Free Asset", "FREE", parseEther("10000"));
 
         // get pricing contract, could be a library tbh
-        const _pricing = await ethers.getContractFactory("Pricing");
+        const _pricing = await ethers.getContractFactory("TestPricing");
         pricing = await _pricing.deploy();
 
         // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
-        s = parseEther("101");
+        s = parseEther("100");
         k = parseEther("100");
-        o = 100;
+        o = 200;
         t = 31449600; //one year
 
         // get balancer factory
-        const _factory = await ethers.getContractFactory(BFactory.abi, BFactory.bytecode, Admin);
-        factory = await _factory.deploy();
+        factory = await setupOptionProtocol(Admin);
 
         // get primitive wrapper
         const _pfi = await ethers.getContractFactory("PFactory");
@@ -73,16 +73,34 @@ describe("Pricing Contract", () => {
         it("Tests the d1 function", async () => {
             let d1 = await pricing.auxiliary(s, k, o, t);
             d1 = await pricing._fromInt(d1);
-            console.log("d1", d1.toString());
-            let moneyness = await pricing.getMoneyness(s, k);
+            console.log(
+                "d1",
+                d1
+                    .mul(parseEther("1"))
+                    .div(10 ** 8)
+                    .toString()
+            );
+            let moneyness = await pricing.logSimpleMoneyness(s, k);
             moneyness = await pricing._fromInt(moneyness);
-            console.log("moneyness", moneyness.toString());
+            console.log(
+                "moneyness",
+                moneyness
+                    .mul(parseEther("1"))
+                    .div(10 ** 8)
+                    .toString()
+            );
         });
 
         it("Tests the d2 function", async () => {
             let d2 = await pricing.auxiliary2(s, k, o, t);
             d2 = await pricing._fromInt(d2);
-            console.log("d2", d2.toString());
+            console.log(
+                "d2",
+                d2
+                    .mul(parseEther("1"))
+                    .div(10 ** 8)
+                    .toString()
+            );
         });
 
         it("Tests the normdist function", async () => {
@@ -97,22 +115,32 @@ describe("Pricing Contract", () => {
             console.log("normdist2", normdist2.toString());
         });
 
+        it("Tests the normdist function", async () => {
+            let spot = s;
+            for (let i = 0; i < 25; i++) {
+                let z2 = await pricing.auxiliary2(spot, k, o, t);
+                let normdist2 = await pricing._normalCummulativeDistribution(z2);
+                normdist2 = await pricing._fromInt(normdist2);
+                console.log("normdist2", normdist2.toString());
+                spot = spot.add(parseEther("1"));
+            }
+        });
+
         it("Tests the put function", async () => {
             let put = await pricing.put(s, k, o, t);
             put = await pricing._fromInt(put);
-            console.log("put", put.toString());
-            let d1 = await pricing.auxiliary(s, k, o, t);
-            let neg = await pricing.neg(d1);
-            let ndneg = await pricing.normdist(neg);
-            ndneg = await pricing._fromInt(ndneg);
-            console.log("neg", ndneg.toString());
-            neg = await pricing._fromInt(neg);
-            console.log("neg", neg.toString());
+            console.log(
+                "put",
+                put
+                    .mul(parseEther("1"))
+                    .div(10 ** 8)
+                    .toString()
+            );
         });
 
         /* it("Tests it all!", async () => {
             // calculate
-            let moneyness = await pricing.getMoneyness(s, k);
+            let moneyness = await pricing.logSimpleMoneyness(s, k);
             let d1 = await pricing.neg(await pricing.auxiliary(s, k, o, t));
             let d2 = await pricing.neg(await pricing.auxiliary2(s, k, o, t));
             let ndnumerator = await pricing.ndnumerator(d1);
@@ -170,9 +198,9 @@ describe("Pricing Contract", () => {
 
         it("Tests it all! 2", async () => {
             // calculate
-            let moneyness = await pricing.getMoneyness(s, k);
-            let d1 = await pricing.neg(await pricing.auxiliary(s, k, o, t));
-            let d2 = await pricing.neg(await pricing.auxiliary2(s, k, o, t));
+            let moneyness = await pricing.logSimpleMoneyness(s, k);
+            let d1 = -(await pricing.auxiliary(s, k, o, t));
+            let d2 = -(await pricing.auxiliary2(s, k, o, t));
             let ndnumerator = await pricing.ndnumerator(d1);
             let nddenominator = await pricing.cdfDenominator(d1);
             let normdist1 = await pricing.normdist(d1);
@@ -208,7 +236,7 @@ describe("Pricing Contract", () => {
 
         it("Test elasticity function", async () => {
             // calculate
-            let d1 = await pricing.neg(await pricing.auxiliary(s, k, o, t));
+            let d1 = (await pricing.auxiliary(s, k, o, t)).mul(-1);
             let eNumerator = await pricing.eNumerator(s, k, o, t, d1);
             let eDenominator = await pricing.eDenominator(s, k, o, t);
             let elasticity = await pricing.elasticity(s, k, o, t, d1);
@@ -218,62 +246,6 @@ describe("Pricing Contract", () => {
             console.log("eNumerator", (eNumerator / DENOMINATOR).toString());
             console.log("eDenominator", (eDenominator / DENOMINATOR).toString());
             console.log("elasticity", (elasticity / DENOMINATOR).toString());
-        });
-    });
-
-    describe("Test Pool Making", () => {
-        it("Deploy a new pool", async () => {
-            await pfi.deployPool();
-            let address = await pfi.bPool();
-            pool = new ethers.Contract(address, BPool.abi, Admin);
-        });
-
-        it("Calculate Weight then Bind", async () => {
-            await pfi.deployPool();
-            await pfi.approvePool();
-            await risky.approve(pfi.address, parseEther("1000000000"));
-            await riskFree.approve(pfi.address, parseEther("1000000000"));
-            let address = await pfi.bPool();
-            pool = new ethers.Contract(address, BPool.abi, Admin);
-
-            let weights = await pricing.getWeights(s, k, o, t);
-            let amounts = await pfi.getAmounts(weights.riskyW, weights.riskFW);
-
-            await pfi.connect(Admin).initializePool(s, k, o, t, { from: Alice });
-            let numTokens = await pool.getNumTokens();
-            let riskyWeight = await pool.getNormalizedWeight(risky.address);
-            let riskFreeWeight = await pool.getNormalizedWeight(riskFree.address);
-            console.log("K", formatEther(k));
-            console.log("x", formatEther(s));
-            console.log("sigma", (o / 1000).toString());
-            console.log("T - t", (t / t).toString());
-            console.log("Risky Weight: ", formatEther(weights.riskyW));
-            console.log("Risk Free Weight: ", formatEther(weights.riskFW));
-            console.log("Risky Amount: ", formatEther(amounts.riskyAmount));
-            console.log("Risk Free Amount: ", formatEther(amounts.riskFreeAmount));
-            console.log("Num Tokens: ", numTokens.toString());
-            console.log("Normalized Risky Weight: ", formatEther(riskyWeight));
-            console.log("Normalized Risk Free Weight: ", formatEther(riskFreeWeight));
-            console.log("Risky Balance: ", formatEther(await risky.balanceOf(pool.address)));
-            console.log(
-                "Risk Free Balance: ",
-                formatEther(await riskFree.balanceOf(pool.address))
-            );
-        });
-
-        it("Tests updateWeights function", async () => {
-            await pfi.deployPool();
-            await pfi.approvePool();
-            await risky.approve(pfi.address, parseEther("1000000000"));
-            await riskFree.approve(pfi.address, parseEther("1000000000"));
-            let address = await pfi.bPool();
-            pool = new ethers.Contract(address, BPool.abi, Admin);
-
-            let weights = await pricing.getWeights(s, k, o, t);
-            let amounts = await pfi.getAmounts(weights.riskyW, weights.riskFW);
-            await risky.transfer(pfi.address, amounts.riskyAmount);
-            await riskFree.transfer(pfi.address, amounts.riskFreeAmount);
-            await pfi.connect(Admin).updateWeights(s, k, o, t, { from: Alice });
         });
     });
 });

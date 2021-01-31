@@ -5,15 +5,20 @@ pragma solidity >=0.5.12 <=0.6.2;
  * @author Primitive
  */
 
-import { IERC20 } from "../interfaces/IERC20.sol";
-import { IReserve } from "../interfaces/IReserve.sol";
-import { ILendingComptroller } from "../interfaces/ILendingComptroller.sol";
-import { ISecuredLoanReceiver } from "../interfaces/ISecuredLoanReceiver.sol";
-import { SafeMath } from "../libraries/SafeMath.sol";
-import { SafeERC20 } from "../libraries/SafeERC20.sol";
+// Primitive
+import { IERC20 } from "../tokens/IERC20.sol";
+import { ILendingComptroller } from "./interfaces/ILendingComptroller.sol";
+import { IReserve } from "./interfaces/IReserve.sol";
+import { ISecuredLoanReceiver } from "./interfaces/ISecuredLoanReceiver.sol";
+
+// Balancer
+import { IBPool } from "../pool/interfaces/IBPool.sol";
+
+// Open Zeppelin
 import { Ownable } from "../utils/Ownable.sol";
 import { ReentrancyGuard } from "../utils/ReentrancyGuard.sol";
-import { IBPool } from "../interfaces/IBPool.sol";
+import { SafeMath } from "../libraries/SafeMath.sol";
+import { SafeERC20 } from "../libraries/SafeERC20.sol";
 
 import "@nomiclabs/buidler/console.sol";
 
@@ -113,7 +118,7 @@ contract LendingPool is Ownable, ReentrancyGuard {
         address to,
         address asset,
         address borrowedAsset,
-        uint debt,
+        uint256 debt,
         uint256 enterQuantity
     ) public returns (bool) {
         // adds liquidity to a pool of reserve asset and receives liquidity shares

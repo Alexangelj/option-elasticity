@@ -1,14 +1,16 @@
 pragma solidity >=0.5.12 <=0.6.2;
 
 import { IERC20, ERC20 } from "../tokens/ERC20.sol";
-import { IReserve } from "../interfaces/IReserve.sol";
+import { IReserve } from "./interfaces/IReserve.sol";
 
-contract IOU is ERC20("Debt Instrument for Primitive", "IOU") {
+contract IOU is ERC20 {
     IReserve public reserve;
 
     function initialize(address reserveAddress) public {
         require(address(reserve) == address(0x0), "ERR_INTIIALIZED");
         reserve = IReserve(reserveAddress);
+        name = "Debt Instrument for Primitive";
+        symbol = "IOU";
     }
 
     modifier onlyReserve {

@@ -2,22 +2,23 @@ const bre = require("@nomiclabs/buidler");
 const { parseEther } = bre.ethers.utils;
 const LendingPool = require("../artifacts/LendingPool.json");
 const Reserve = require("../artifacts/Reserve.json");
-const PToken = require("../artifacts/PToken.json");
+const TestToken = require("../artifacts/TestToken.json");
 const IOU = require("../artifacts/IOU.json");
 const BFactory = require("../artifacts/BFactory.json");
 const BPool = require("../artifacts/BPool.json");
 const BPoolTemplateLib = require("../artifacts/BPoolTemplateLib.json");
 const { formatEther, parseUnits } = require("ethers/lib/utils");
 const { deployContract, link } = require("ethereum-waffle");
+const { BigNumber } = require("ethers");
 const ethers = bre.ethers;
 
 const MAX_UINT = parseEther("10000000000000000000000000000000000000");
 
 const setupTokens = async () => {
     let ether, dai, iEther, iDai;
-    ether = await ethers.getContractFactory("PToken");
+    ether = await ethers.getContractFactory("TestToken");
     ether = await ether.deploy("Ethereum", "ETH", parseEther("100000"));
-    dai = await ethers.getContractFactory("PToken");
+    dai = await ethers.getContractFactory("TestToken");
     dai = await dai.deploy("Dai Stablecoin", "DAI", parseEther("10000000"));
     iEther = await ethers.getContractFactory("IOU");
     iEther = await iEther.deploy();
@@ -30,7 +31,7 @@ const setupDebtToken = async () => {
     debtToken = await ethers.getContractFactory("IOU");
     debtToken = await debtToken.deploy();
     return debtToken;
-}
+};
 
 const setupMultipleContracts = async (arrayOfContractNames) => {
     let contracts = [];
@@ -67,7 +68,7 @@ const setupLendingProtocol = async (lendingPool, reserve, trader) => {
         await lendingPool.initialize(reserve.address);
         await reserve.initialize(lendingPool.address);
         await trader.initialize(lendingPool.address);
-    } catch(error) {
+    } catch (error) {
         console.log(error);
     }
 };
@@ -138,12 +139,15 @@ const setupOptionPool = async (
         priceProvider.address,
         "Primitive Option Pool V1",
         "PROP",
-        parseEther("100"),
+        parseEther("1"),
         underlyingToken.address,
         quoteToken.address,
         parseEther("100"),
         31449600
     );
+
+    await pool.bind(underlyingToken.address, parseEther("1"), parseEther("5"));
+    await pool.bind(quoteToken.address, parseEther("100"), parseEther("5"));
     return pool;
 };
 
@@ -164,7 +168,7 @@ const calibratePool = async (
     await riskyAsset.transfer(primitiveProxy.address, amounts.riskyAmount);
     await riskFreeAsset.transfer(primitiveProxy.address, amounts.riskFreeAmount);
     // initializes with weights and finalizes it
-    await primitiveProxy.connect(signer).updateWeights(s, k, o, t);
+    await primitiveProxy.updateWeights(s, k, o, t);
     await primitiveProxy.finalizePool(pool.address);
 };
 
@@ -193,7 +197,7 @@ const getMultipleBalances = async (tokensArray, account) => {
     return balancesArray;
 };
 
-const getStateOfPool = async (pool, pricing, account) => {
+const getStateOfPool = async (pool, priceProvider, pricing, account) => {
     let totalSupply = await pool.totalSupply();
     let balanceOfAccount = await pool.balanceOf(account);
     let tokens = await pool.getCurrentTokens();
@@ -204,22 +208,108 @@ const getStateOfPool = async (pool, pricing, account) => {
     let etherWeight = await pool.getNormalizedWeight(ether);
     let daiWeight = await pool.getNormalizedWeight(dai);
     let params = await pool.getParameters();
-    let weights = await pricing.weights(params.s, params.k, params.o, params.t);
+    let spot = await priceProvider.getAssetPrice(ether);
+    let weights = await pricing.weights(spot, params.k, params.o, params.t);
     let elasticity = weights.riskyW;
+    let optionCallPrice = await pricing.getCallPrice(spot, params.k, params.o, params.t);
+    let optionPutPrice = await pricing.getPutPrice(spot, params.k, params.o, params.t);
+    let riskFreePerPoolShare = daiBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyPerPoolShare = etherBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyValuePerPoolShare = riskyPerPoolShare.mul(spot).div(parseEther("1"));
+    let totalPoolValuePerShare = riskyValuePerPoolShare.add(riskFreePerPoolShare);
 
     let state = {
         elasticity: formatEther(elasticity),
-        supply: formatEther(totalSupply),
-        bal: formatEther(balanceOfAccount),
-        ethBal: formatEther(etherBalance),
-        daiBal: formatEther(daiBalance),
-        ethWeight: formatEther(etherWeight),
-        daiWeight: formatEther(daiWeight)
-    }
+        poolSupply: formatEther(totalSupply),
+        lpTokenBal: formatEther(balanceOfAccount),
+        poolRiskyBal: formatEther(etherBalance),
+        poolRiskFreeBal: formatEther(daiBalance),
+        poolRiskyWeight: formatEther(etherWeight),
+        poolRiskFreeWeight: formatEther(daiWeight),
+        optionCallPrice: formatEther(optionCallPrice),
+        optionPutPrice: formatEther(optionPutPrice),
+        riskyPerPoolShare: formatEther(riskyPerPoolShare),
+        riskFreePerPoolShare: formatEther(riskFreePerPoolShare),
+        totalPoolValuePerShare: formatEther(totalPoolValuePerShare),
+    };
     return state;
-}
+};
+
+const getRawStateOfPool = async (pool, priceProvider, pricing, account) => {
+    let totalSupply = await pool.totalSupply();
+    let balanceOfAccount = await pool.balanceOf(account);
+    let tokens = await pool.getCurrentTokens();
+    let ether = tokens[0];
+    let dai = tokens[1];
+    let etherBalance = await pool.getBalance(ether);
+    let daiBalance = await pool.getBalance(dai);
+    let etherWeight = await pool.getNormalizedWeight(ether);
+    let daiWeight = await pool.getNormalizedWeight(dai);
+    let params = await pool.getParameters();
+    let spot = await priceProvider.getAssetPrice(ether);
+    let weights = await pricing.weights(spot, params.k, params.o, params.t);
+    let elasticity = weights.riskyW;
+    let optionCallPrice = await pricing.getCallPrice(spot, params.k, params.o, params.t);
+    let optionPutPrice = await pricing.getPutPrice(spot, params.k, params.o, params.t);
+    let riskFreePerPoolShare = daiBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyPerPoolShare = etherBalance.mul(parseEther("1")).div(totalSupply);
+    let riskyValuePerPoolShare = riskyPerPoolShare.mul(spot).div(parseEther("1"));
+    let totalPoolValuePerShare = riskyValuePerPoolShare.add(riskFreePerPoolShare);
+
+    let state = {
+        elasticity: elasticity,
+        poolSupply: totalSupply,
+        lpTokenBal: balanceOfAccount,
+        poolRiskyBal: etherBalance,
+        poolRiskFreeBal: daiBalance,
+        poolRiskyWeight: etherWeight,
+        poolRiskFreeWeight: daiWeight,
+        optionCallPrice: optionCallPrice,
+        optionPutPrice: optionPutPrice,
+        riskyPerPoolShare: riskyPerPoolShare,
+        riskFreePerPoolShare: riskFreePerPoolShare,
+        totalPoolValuePerShare: totalPoolValuePerShare,
+    };
+    return state;
+};
+
+const getStateChangeOfPool = async (oldState, currentState) => {
+    let stateChange = {
+        elasticity: currentState.elasticity.sub(oldState.elasticity),
+        poolSupply: currentState.poolSupply.sub(oldState.poolSupply),
+        lpTokenBal: currentState.lpTokenBal.sub(oldState.lpTokenBal),
+        poolRiskyBal: currentState.poolRiskyBal.sub(oldState.poolRiskyBal),
+        poolRiskFreeBal: currentState.poolRiskFreeBal.sub(oldState.poolRiskFreeBal),
+        poolRiskyWeight: currentState.poolRiskyWeight.sub(oldState.poolRiskyWeight),
+        poolRiskFreeWeight: currentState.poolRiskFreeWeight.sub(oldState.poolRiskFreeWeight),
+        optionCallPrice: currentState.optionCallPrice.sub(oldState.optionCallPrice),
+        optionPutPrice: currentState.optionPutPrice.sub(oldState.optionPutPrice),
+        riskyPerPoolShare: currentState.riskyPerPoolShare.sub(oldState.riskyPerPoolShare),
+        riskFreePerPoolShare: currentState.riskFreePerPoolShare.sub(oldState.riskFreePerPoolShare),
+        totalPoolValuePerShare: currentState.totalPoolValuePerShare.sub(
+            oldState.totalPoolValuePerShare
+        ),
+    };
+    change = {
+        elasticity: formatEther(stateChange.elasticity),
+        poolSupply: formatEther(stateChange.poolSupply),
+        lpTokenBal: formatEther(stateChange.lpTokenBal),
+        poolRiskyBal: formatEther(stateChange.poolRiskyBal),
+        poolRiskFreeBal: formatEther(stateChange.poolRiskFreeBal),
+        poolRiskyWeight: formatEther(stateChange.poolRiskyWeight),
+        poolRiskFreeWeight: formatEther(stateChange.poolRiskFreeWeight),
+        optionCallPrice: formatEther(stateChange.optionCallPrice),
+        optionPutPrice: formatEther(stateChange.optionPutPrice),
+        riskyPerPoolShare: formatEther(stateChange.riskyPerPoolShare),
+        riskFreePerPoolShare: formatEther(stateChange.riskFreePerPoolShare),
+        totalPoolValuePerShare: formatEther(stateChange.totalPoolValuePerShare),
+    };
+    return change;
+};
 
 Object.assign(module.exports, {
+    getRawStateOfPool,
+    getStateChangeOfPool,
     getStateOfPool,
     setupTokens,
     setupMultipleContracts,
@@ -232,5 +322,5 @@ Object.assign(module.exports, {
     calibratePool,
     calculateAmounts,
     getMultipleBalances,
-    setupDebtToken
+    setupDebtToken,
 });

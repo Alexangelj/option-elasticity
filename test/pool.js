@@ -4,15 +4,7 @@ const chai = require("chai");
 const { solidity } = require("ethereum-waffle");
 chai.use(solidity);
 const { parseEther } = bre.ethers.utils;
-const LendingPool = require("../artifacts/LendingPool.json");
-const Reserve = require("../artifacts/Reserve.json");
-const PToken = require("../artifacts/PToken.json");
-const IOU = require("../artifacts/IOU.json");
-const BFactory = require("../artifacts/BFactory.json");
-const BPool = require("../artifacts/BPool.json");
-const BPoolTemplateLib = require("../artifacts/BPoolTemplateLib.json");
-const { formatEther, parseUnits } = require("ethers/lib/utils");
-const { deployContract, link } = require("ethereum-waffle");
+const setup = require("./setup.js");
 const {
     setupTokens,
     setupMultipleContracts,
@@ -25,7 +17,7 @@ const {
     getMultipleBalances,
     setupDebtToken,
     getStateOfPool,
-} = require("./setup.js");
+} = setup;
 
 const ethers = bre.ethers;
 
@@ -51,15 +43,17 @@ describe("OptionPool.sol", () => {
         // standard erc20s with mint functions
         // iou mappings at a 1:1 ratio with undelying asset. Deposit 1 ether => get 1 iEther
         [ether, dai] = await setupTokens();
+        underlyingToken = ether;
+        quoteToken = dai;
 
         // pricing is the black-scholes library, primitiveFactory deploys the option pools
         [pricing, primitiveFactory, priceProvider] = await setupMultipleContracts([
             "Pricing",
-            "PFactory",
+            "OptionsController",
             "ProxyPriceProvider",
         ]);
 
-        // get parameters, s = spot = x, k = strike, o = sigma = volatility, t = T until expiry
+        // get parameters, s = spot = x, k  = strike, o = sigma = volatility, t = T until expiry
         s = parseEther("101");
         k = parseEther("100");
         o = 100;
@@ -94,18 +88,51 @@ describe("OptionPool.sol", () => {
 
     describe("joinPool", () => {
         it("should join the pool", async () => {
-            let state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+            let state1 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
             await pool.joinPool(parseEther("1"), [parseEther("10000"), parseEther("100000")]);
-            state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+            let state2 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            let stateChange = await setup.getStateChangeOfPool(state1, state2);
+            console.log("initial state then join with 1", stateChange);
+
+            let state5 = await setup.getStateOfPool(pool, priceProvider, pricing, Alice);
+            console.log(state5);
 
             await priceProvider.setTestPrice(parseEther("103"));
-            state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+
+            let state3 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
             await pool.joinPool(parseEther("1"), [parseEther("10000"), parseEther("100000")]);
-            state = await getStateOfPool(pool, pricing, Alice);
-            console.log(state);
+            let state4 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            let stateChange2 = await setup.getStateChangeOfPool(state3, state4);
+            console.log("change asset spot price to 103 then add 1", stateChange2);
+            let stateChange3 = await setup.getStateChangeOfPool(state1, state4);
+            console.log("big change", stateChange3);
+        });
+    });
+
+    describe("targetWeightsOverTime", () => {
+        it("should set calibration with target weights", async () => {
+            let finalWeightsArray = [parseEther("9"), parseEther("1")];
+            let beginBlock = await ethers.getDefaultProvider().getBlockNumber();
+            let finalBlock = beginBlock + 100;
+            await expect(
+                pool.targetWeightsOverTime(finalWeightsArray, beginBlock, finalBlock)
+            ).to.emit(pool, "CalibrationUpdated");
+        });
+    });
+
+    describe("swapExactAmountIn", () => {
+        it("should swap tokens", async () => {
+            let state1 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            await pool.swapExactAmountIn(
+                underlyingToken.address,
+                parseEther("1"),
+                quoteToken.address,
+                0,
+                parseEther("1000000000")
+            );
+            let state2 = await setup.getRawStateOfPool(pool, priceProvider, pricing, Alice);
+            let stateChange = await setup.getStateChangeOfPool(state1, state2);
+            console.log("initial state then join with 1", stateChange);
         });
     });
 });
